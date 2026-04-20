@@ -213,11 +213,34 @@ h1 {
 .terminal-line.prompt { color: var(--accent-2); }
 .terminal-line.input { color: #9be3ff; }
 
-.input-bar {
+.terminal-input-line {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  padding: 14px;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.5rem;
+  align-items: baseline;
+  margin-top: 0.1rem;
+  margin-bottom: 0;
+}
+
+.terminal-prompt {
+  white-space: pre-wrap;
+}
+
+.terminal-input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  margin: 0;
+  caret-color: var(--accent-2);
+}
+
+.terminal-input::placeholder {
+  color: transparent;
 }
 
 .btn {
@@ -259,7 +282,8 @@ h1 {
 .js-view {
   margin: 14px;
   padding: 14px;
-  min-height: 220px;
+  height: 68vh;
+  min-height: 68vh;
   overflow: auto;
   border-radius: 16px;
   background: rgba(6, 9, 19, 0.88);
@@ -288,4 +312,5 @@ h1 {
   .app-shell { padding: 14px; }
   .editor-shell { height: 56vh; }
   .terminal-panel { min-height: 56vh; }
+  .js-view { height: 56vh; min-height: 56vh; }
 }

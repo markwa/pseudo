@@ -176,12 +176,9 @@ const app = Vue.createApp({
       this.appendLine("Loaded example: " + this.examples[this.selectedExample].name, "info");
       this.scrollTerminalToBottom();
     },
-    clearOutput() {
-      this.outputLines = [];
-      this.terminalStatus = "Output cleared";
-    },
     async runProgram() {
       this.stopProgram(false);
+      this.outputLines = [];
       this.outputLines.push({ kind: "info", text: "Compiling pseudocode..." });
       this.terminalStatus = "Translating";
       this.scrollTerminalToBottom();
@@ -239,11 +236,10 @@ const app = Vue.createApp({
         return;
       }
       const value = this.inputValue;
-      this.appendLine(`> ${value}`, "input");
+      this.appendLine(`${this.promptText}${value}`, "input");
       this.worker.postMessage({ type: "input-response", value });
       this.inputValue = "";
       this.promptActive = false;
-      this.promptText = "";
       this.scrollTerminalToBottom();
       this.$nextTick(() => this.focusInput());
     },
@@ -281,7 +277,6 @@ const app = Vue.createApp({
       }
       this.running = false;
       this.promptActive = false;
-      this.promptText = "";
       this.inputValue = "";
       this.pendingPromptResolver = null;
       this.terminalStatus = completed ? "Completed" : "Idle";

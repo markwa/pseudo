@@ -23,7 +23,6 @@
         <button class="btn secondary" @click="loadExample">Load Example</button>
         <button class="btn primary" @click="runProgram" :disabled="running">Run</button>
         <button class="btn" @click="stopProgram">Stop / Reset</button>
-        <button class="btn" @click="clearOutput">Clear Output</button>
         <button class="btn" @click="showJs = !showJs">{{ showJs ? 'Hide JS' : 'Show JS' }}</button>
       </div>
     </header>
@@ -31,24 +30,29 @@
     <main class="workspace">
       <section class="panel editor-panel">
         <div class="panel-head">
-          <h2>Pseudocode editor</h2>
+          <h2>{{ showJs ? 'Generated JavaScript' : 'Pseudocode editor' }}</h2>
           <span class="status" :class="{ running }">{{ running ? 'Running' : 'Idle' }}</span>
         </div>
-        <div class="editor-shell">
-          <div class="line-gutter" ref="gutterScroll" aria-hidden="true">
-            <div v-for="n in editorLineCount" :key="n">{{ n }}</div>
+        <template v-if="!showJs">
+          <div class="editor-shell">
+            <div class="line-gutter" ref="gutterScroll" aria-hidden="true">
+              <div v-for="n in editorLineCount" :key="n">{{ n }}</div>
+            </div>
+            <textarea
+              v-model="editorText"
+              @scroll="syncEditorScroll"
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
+              autocorrect="off"
+              class="editor"
+              placeholder="Type OCR pseudocode here..."
+            ></textarea>
           </div>
-          <textarea
-            v-model="editorText"
-            @scroll="syncEditorScroll"
-            spellcheck="false"
-            autocapitalize="off"
-            autocomplete="off"
-            autocorrect="off"
-            class="editor"
-            placeholder="Type OCR pseudocode here..."
-          ></textarea>
-        </div>
+        </template>
+        <template v-else>
+          <pre class="js-view">{{ generatedJs || '// Run the program to see generated JavaScript.' }}</pre>
+        </template>
       </section>
 
       <section class="panel terminal-panel">
@@ -60,30 +64,24 @@
           <div v-for="(line, idx) in outputLines" :key="idx" class="terminal-line" :class="line.kind">
             <span v-text="line.text"></span>
           </div>
-          <div v-if="promptActive" class="terminal-line prompt">
-            <span v-text="promptText"></span>
-          </div>
+          <form v-if="promptActive" class="terminal-line prompt terminal-input-line" @submit.prevent="submitInput">
+            <span class="terminal-prompt" v-text="promptText"></span>
+            <input
+              ref="inputField"
+              v-model="inputValue"
+              class="terminal-input"
+              type="text"
+              spellcheck="false"
+              autocapitalize="off"
+              autocomplete="off"
+              autocorrect="off"
+              placeholder=""
+            >
+          </form>
         </div>
-        <form class="input-bar" @submit.prevent="submitInput">
-          <input
-            ref="inputField"
-            v-model="inputValue"
-            type="text"
-            :disabled="!promptActive"
-            :placeholder="promptActive ? 'Enter input and press Return' : 'Run a program to enable input'"
-          >
-          <button class="btn primary" type="submit" :disabled="!promptActive">Send</button>
-        </form>
       </section>
     </main>
 
-    <section v-if="showJs" class="panel js-panel">
-      <div class="panel-head">
-        <h2>Generated JavaScript</h2>
-        <span class="status muted">Teaching view</span>
-      </div>
-      <pre class="js-view">{{ generatedJs || '// Run the program to see generated JavaScript.' }}</pre>
-    </section>
   </div>
 
   <script type="module" src="app.js"></script>
