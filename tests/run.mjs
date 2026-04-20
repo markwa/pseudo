@@ -387,6 +387,13 @@ const cases = [
     );
   }],
 
+  ["incomplete expression reports the source line number", () => {
+    assert.throws(
+      () => translateSource("x = (1 +"),
+      (error) => /Unexpected end of expression|Expression ended too early/.test(error.message) && error.line === 1
+    );
+  }],
+
   // --- TRUE / FALSE / NULL literals ---
   ["TRUE, FALSE, and NULL literals translate and evaluate correctly", async () => {
     const source = [

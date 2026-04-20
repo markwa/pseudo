@@ -106,7 +106,7 @@ function translateStatements(lines, startIndex, terminators, ctx) {
 
     if (/^while\b/i.test(stripped)) {
       const cond = stripped.replace(/^while\b/i, "").trim();
-      emit(output, lineMap, originalLineNumber, `while (${emitExpression(cond, ctx, true, classContext)}) {`);
+      emit(output, lineMap, originalLineNumber, `while (${emitExpression(cond, ctx, true, classContext, originalLineNumber)}) {`);
       const inner = translateStatements(lines, i + 1, [/^endwhile\b/i], ctx);
       output.push(...inner.lines);
       lineMap.push(...inner.lineMap);
@@ -128,7 +128,7 @@ function translateStatements(lines, startIndex, terminators, ctx) {
       if (!untilMatch) {
         throw syntaxError("Missing until clause", originalLineNumber);
       }
-      emit(output, lineMap, inner.nextIndex + 1, `} while (!(${emitExpression(untilMatch[1], ctx, true, classContext)}));`);
+      emit(output, lineMap, inner.nextIndex + 1, `} while (!(${emitExpression(untilMatch[1], ctx, true, classContext, inner.nextIndex + 1)}));`);
       i = inner.nextIndex + 1;
       continue;
     }
@@ -139,8 +139,8 @@ function translateStatements(lines, startIndex, terminators, ctx) {
         throw syntaxError("Invalid for loop", originalLineNumber);
       }
       const [, variable, startExpr, endExpr] = match;
-      const startCode = emitExpression(startExpr, ctx, true, classContext);
-      const endCode = emitExpression(endExpr, ctx, true, classContext);
+      const startCode = emitExpression(startExpr, ctx, true, classContext, originalLineNumber);
+      const endCode = emitExpression(endExpr, ctx, true, classContext, originalLineNumber);
       const startNum = parseFloat(startExpr.trim());
       const endNum = parseFloat(endExpr.trim());
       const descending = !isNaN(startNum) && !isNaN(endNum) && startNum > endNum;
@@ -161,7 +161,7 @@ function translateStatements(lines, startIndex, terminators, ctx) {
 
     if (/^switch\b/i.test(stripped)) {
       const expr = stripped.replace(/^switch\b/i, "").replace(/:\s*$/, "").trim();
-      emit(output, lineMap, originalLineNumber, `switch (${emitExpression(expr, ctx, true, classContext)}) {`);
+      emit(output, lineMap, originalLineNumber, `switch (${emitExpression(expr, ctx, true, classContext, originalLineNumber)}) {`);
       const inner = translateSwitch(lines, i + 1, ctx, originalLineNumber);
       output.push(...inner.lines);
       lineMap.push(...inner.lineMap);
@@ -194,13 +194,13 @@ function translateStatements(lines, startIndex, terminators, ctx) {
         throw syntaxError("return is not valid outside a function or procedure", originalLineNumber);
       }
       const expr = stripped.replace(/^return\b/i, "").trim();
-      emit(output, lineMap, originalLineNumber, `return ${expr ? emitExpression(expr, ctx, true, classContext) : ""};`);
+      emit(output, lineMap, originalLineNumber, `return ${expr ? emitExpression(expr, ctx, true, classContext, originalLineNumber) : ""};`);
       i += 1;
       continue;
     }
 
     if (/^print\s*\(/i.test(stripped)) {
-      const call = emitStatementCall(stripped, ctx, classContext, true);
+      const call = emitStatementCall(stripped, ctx, classContext, true, originalLineNumber);
       emit(output, lineMap, originalLineNumber, call);
       i += 1;
       continue;
@@ -212,7 +212,7 @@ function translateStatements(lines, startIndex, terminators, ctx) {
         throw syntaxError("Invalid global declaration", originalLineNumber);
       }
       const [, varName, valueExpr] = globalMatch;
-      emit(output, lineMap, originalLineNumber, `globalThis.${varName} = ${emitExpression(valueExpr, ctx, true, classContext)};`);
+      emit(output, lineMap, originalLineNumber, `globalThis.${varName} = ${emitExpression(valueExpr, ctx, true, classContext, originalLineNumber)};`);
       i += 1;
       continue;
     }
@@ -226,9 +226,9 @@ function translateStatements(lines, startIndex, terminators, ctx) {
       const parts = dims.split(",").map((part) => part.trim()).filter(Boolean);
       let js;
       if (parts.length === 1) {
-        js = `var ${name} = new Array(${emitExpression(parts[0], ctx, true, classContext)});`;
+        js = `var ${name} = new Array(${emitExpression(parts[0], ctx, true, classContext, originalLineNumber)});`;
       } else if (parts.length === 2) {
-        js = `var ${name} = Array.from({ length: ${emitExpression(parts[0], ctx, true, classContext)} }, () => new Array(${emitExpression(parts[1], ctx, true, classContext)}));`;
+        js = `var ${name} = Array.from({ length: ${emitExpression(parts[0], ctx, true, classContext, originalLineNumber)} }, () => new Array(${emitExpression(parts[1], ctx, true, classContext, originalLineNumber)}));`;
       } else {
         throw syntaxError("Only one- and two-dimensional arrays are supported", originalLineNumber);
       }
@@ -242,7 +242,7 @@ function translateStatements(lines, startIndex, terminators, ctx) {
       break;
     }
 
-    const assignment = translateAssignment(stripped, ctx, classContext, false);
+    const assignment = translateAssignment(stripped, ctx, classContext, false, originalLineNumber);
     if (assignment) {
       emit(output, lineMap, originalLineNumber, assignment);
       i += 1;
@@ -288,7 +288,7 @@ function parseIf(lines, startIndex, ctx) {
       if (!match) {
         throw syntaxError("Invalid if statement", lineNumber);
       }
-      emit(output, lineMap, lineNumber, `if (${emitExpression(match[1], ctx, true, classContext)}) {`);
+      emit(output, lineMap, lineNumber, `if (${emitExpression(match[1], ctx, true, classContext, lineNumber)}) {`);
       const inner = translateStatements(lines, i + 1, [/^elseif\b/i, /^else\b/i, /^endif\b/i], ctx);
       output.push(...inner.lines);
       lineMap.push(...inner.lineMap);
@@ -298,7 +298,7 @@ function parseIf(lines, startIndex, ctx) {
     }
 
     if (/^elseif\b/i.test(line)) {
-      emit(output, lineMap, lineNumber, `} else if (${emitExpression(line.replace(/^elseif\b/i, "").replace(/\s+then\s*$/i, "").trim(), ctx, true, classContext)}) {`);
+      emit(output, lineMap, lineNumber, `} else if (${emitExpression(line.replace(/^elseif\b/i, "").replace(/\s+then\s*$/i, "").trim(), ctx, true, classContext, lineNumber)}) {`);
       const inner = translateStatements(lines, i + 1, [/^elseif\b/i, /^else\b/i, /^endif\b/i], ctx);
       output.push(...inner.lines);
       lineMap.push(...inner.lineMap);
@@ -347,7 +347,7 @@ function translateSwitch(lines, startIndex, ctx, openingLine) {
       if (openCase) {
         emit(output, lineMap, lineNumber, "break;");
       }
-      emit(output, lineMap, lineNumber, `case ${emitExpression(exprText, ctx, true, classContext)}:`);
+      emit(output, lineMap, lineNumber, `case ${emitExpression(exprText, ctx, true, classContext, lineNumber)}:`);
       openCase = true;
       i += 1;
       continue;
@@ -559,7 +559,7 @@ function parseClass(lines, startIndex, ctx) {
   return { lines: output, lineMap, nextIndex: i + 1 };
 }
 
-function translateAssignment(statement, ctx, classContext, allowGlobalPrefix) {
+function translateAssignment(statement, ctx, classContext, allowGlobalPrefix, lineNumber = null) {
   const eqIndex = findAssignmentIndex(statement);
   if (eqIndex === -1) {
     return null;
@@ -571,22 +571,22 @@ function translateAssignment(statement, ctx, classContext, allowGlobalPrefix) {
   }
   if (allowGlobalPrefix && /^global\b/i.test(left)) {
     const target = left.replace(/^global\b/i, "").trim();
-    return `globalThis.${target} = ${emitExpression(right, ctx, true, classContext)};`;
+    return `globalThis.${target} = ${emitExpression(right, ctx, true, classContext, lineNumber)};`;
   }
 
   const leftExpr = parseSimpleTarget(left, ctx, classContext);
   if (leftExpr.kind === "identifier") {
     const scope = ctx.scopeStack[ctx.scopeStack.length - 1];
     if (classContext && classContext.fields.includes(leftExpr.name) && !scope.declared.has(leftExpr.name)) {
-      return `this.${leftExpr.name} = ${emitExpression(right, ctx, true, classContext)};`;
+      return `this.${leftExpr.name} = ${emitExpression(right, ctx, true, classContext, lineNumber)};`;
     }
     if (!scope.declared.has(leftExpr.name)) {
       scope.declared.add(leftExpr.name);
-      return `var ${leftExpr.name} = ${emitExpression(right, ctx, true, classContext)};`;
+      return `var ${leftExpr.name} = ${emitExpression(right, ctx, true, classContext, lineNumber)};`;
     }
-    return `${leftExpr.name} = ${emitExpression(right, ctx, true, classContext)};`;
+    return `${leftExpr.name} = ${emitExpression(right, ctx, true, classContext, lineNumber)};`;
   }
-  return `${leftExpr.code} = ${emitExpression(right, ctx, true, classContext)};`;
+  return `${leftExpr.code} = ${emitExpression(right, ctx, true, classContext, lineNumber)};`;
 }
 
 function parseSimpleTarget(text, ctx, classContext) {
@@ -598,16 +598,21 @@ function parseSimpleTarget(text, ctx, classContext) {
   return { kind: "complex", code: emitExprNode(expr, ctx, { allowAwait: true, classContext }) };
 }
 
-function emitStatementCall(line, ctx, classContext, allowAwait) {
-  const expr = parseExpression(line, { allowAwait, classContext });
-  validateSuperUsage(expr, classContext);
-  return `${emitExprNode(expr, ctx, { allowAwait, classContext })};`;
+function emitStatementCall(line, ctx, classContext, allowAwait, lineNumber = null) {
+  return `${emitExpression(line, ctx, allowAwait, classContext, lineNumber)};`;
 }
 
-function emitExpression(text, ctx, allowAwait, classContext) {
-  const expr = parseExpression(text, { allowAwait, classContext });
-  validateSuperUsage(expr, classContext);
-  return emitExprNode(expr, ctx, { allowAwait, classContext });
+function emitExpression(text, ctx, allowAwait, classContext, lineNumber = null) {
+  try {
+    const expr = parseExpression(text, { allowAwait, classContext });
+    validateSuperUsage(expr, classContext);
+    return emitExprNode(expr, ctx, { allowAwait, classContext });
+  } catch (error) {
+    if (lineNumber == null || (error && typeof error.line === "number")) {
+      throw error;
+    }
+    throw syntaxError(error && error.message ? error.message : String(error), lineNumber);
+  }
 }
 
 function validateSuperUsage(node, classContext) {

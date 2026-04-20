@@ -664,10 +664,7 @@ const app = Vue.createApp({
           return;
         }
         this.terminalStatus = "Failed to load example";
-        this.appendLine(
-          `Failed to load example: ${error && error.message ? error.message : String(error)}`,
-          "error"
-        );
+        this.appendLine(formatExampleLoadError(error), "error");
         this.scrollTerminalToBottom();
       });
       return this.exampleLoadPromise;
@@ -730,7 +727,7 @@ const app = Vue.createApp({
       this.worker = worker;
       worker.onmessage = (event) => this.handleWorkerMessage(event);
       worker.onerror = (event) => {
-        this.outputLines.push({ kind: "error", text: `Worker error: ${event.message}` });
+        this.outputLines.push({ kind: "error", text: formatWorkerError(event && event.message) });
         this.finishRun(false);
       };
       worker.postMessage({
@@ -811,9 +808,7 @@ const app = Vue.createApp({
       this.terminalStatus = completed ? "Completed" : "Idle";
     },
     reportTranslatorError(error) {
-      const line = error && error.line ? `Line ${error.line}: ` : "";
-      const message = error && error.message ? error.message : String(error);
-      this.outputLines.push({ kind: "error", text: `Translation error. ${line}${message}` });
+      this.outputLines.push({ kind: "error", text: formatTranslatorError(error) });
       this.terminalStatus = "Translation failed";
       this.running = false;
       this.scrollTerminalToBottom();
@@ -1164,10 +1159,141 @@ function createRunnerWorker(initialFiles = []) {
 
 function formatRuntimeError(message) {
   if (!message) {
-    return "Runtime error.";
+    return "Runtime error. The program stopped unexpectedly.";
   }
   const pseudoLine = message.pseudoLine ? ` Pseudocode line ${message.pseudoLine}.` : "";
-  return `Runtime error.${pseudoLine} ${message.message || ""}`.trim();
+  const raw = String(message.message || "").trim();
+  return `Runtime error.${pseudoLine} ${toFriendlyRuntimeMessage(raw)}`.trim();
+}
+
+function formatTranslatorError(error) {
+  const line = error && error.line ? `Line ${error.line}: ` : "";
+  const raw = String((error && error.message) || error || "").trim();
+  const message = toFriendlySyntaxMessage(raw);
+  return `Syntax error. ${line}${message}`.trim();
+}
+
+function formatExampleLoadError(error) {
+  const raw = String((error && error.message) || error || "").trim();
+  if (/Failed to load example file/i.test(raw)) {
+    return "Could not load the example data file. Check that the example-data folder is deployed and publicly accessible.";
+  }
+  return `Failed to load example: ${raw || "Unknown error"}`;
+}
+
+function formatWorkerError(message) {
+  const raw = String(message || "").trim();
+  if (!raw) {
+    return "Runtime worker crashed unexpectedly.";
+  }
+  return `Runtime worker error: ${raw}`;
+}
+
+function toFriendlyRuntimeMessage(raw) {
+  if (!raw) {
+    return "The program stopped unexpectedly.";
+  }
+  if (/Cannot read properties of undefined/i.test(raw)) {
+    return "Tried to use a value that does not exist. Check array indexes and method calls.";
+  }
+  if (/is not a function/i.test(raw)) {
+    return "Tried to call something that is not a function. Check method names and brackets.";
+  }
+  if (/already waiting/i.test(raw)) {
+    return "A second INPUT was requested before the first one was answered.";
+  }
+  return raw;
+}
+
+function toFriendlySyntaxMessage(raw) {
+  if (!raw) {
+    return "Could not parse this program.";
+  }
+  if (/Missing endif/i.test(raw)) {
+    return "Missing ENDIF for an IF block.";
+  }
+  if (/Missing endwhile/i.test(raw)) {
+    return "Missing ENDWHILE for a WHILE block.";
+  }
+  if (/Missing next/i.test(raw)) {
+    return "Missing NEXT for a FOR loop.";
+  }
+  if (/Missing endswitch/i.test(raw)) {
+    return "Missing ENDSWITCH for a SWITCH block.";
+  }
+  if (/Missing function terminator/i.test(raw)) {
+    return "Missing ENDFUNCTION for a FUNCTION block.";
+  }
+  if (/Missing procedure terminator/i.test(raw)) {
+    return "Missing ENDPROCEDURE for a PROCEDURE block.";
+  }
+  if (/Missing endclass/i.test(raw)) {
+    return "Missing ENDCLASS for a CLASS block.";
+  }
+  if (/Missing until clause/i.test(raw)) {
+    return "A DO loop must end with UNTIL condition.";
+  }
+  if (/Invalid if statement/i.test(raw)) {
+    return "Invalid IF/ELSEIF syntax. Use IF condition THEN.";
+  }
+  if (/Invalid for loop/i.test(raw)) {
+    return "Invalid FOR syntax. Use FOR i = start TO end.";
+  }
+  if (/Invalid array declaration/i.test(raw)) {
+    return "Invalid ARRAY syntax. Use ARRAY name[size] or ARRAY name[rows, cols].";
+  }
+  if (/Only one- and two-dimensional arrays are supported/i.test(raw)) {
+    return "Only 1D and 2D arrays are supported.";
+  }
+  if (/Invalid default/i.test(raw)) {
+    return "Invalid DEFAULT branch. Use DEFAULT on its own line.";
+  }
+  if (/Invalid case/i.test(raw)) {
+    return "Invalid CASE branch. Use CASE value.";
+  }
+  if (/Invalid class declaration/i.test(raw)) {
+    return "Invalid CLASS declaration. Use CLASS Name or CLASS Name INHERITS Parent.";
+  }
+  if (/Invalid class body statement/i.test(raw)) {
+    return "Invalid statement inside CLASS. Only fields, methods, and visibility keywords are allowed.";
+  }
+  if (/Duplicate class member declaration/i.test(raw)) {
+    return "Duplicate class member name. Rename one of the fields or methods.";
+  }
+  if (/SUPER can only be used inside a class/i.test(raw)) {
+    return "SUPER can only be used inside a class method.";
+  }
+  if (/return is not valid outside a function or procedure/i.test(raw)) {
+    return "RETURN can only be used inside FUNCTION or PROCEDURE.";
+  }
+  if (/Unclosed string literal/i.test(raw)) {
+    return "A string is missing its closing quote.";
+  }
+  if (/Chained comparisons are not supported/i.test(raw)) {
+    return "Chained comparisons are not supported. Split them with AND, for example: a < b AND b < c.";
+  }
+  if (/new must be followed by a class name/i.test(raw)) {
+    return "NEW must be followed by a class name, for example NEW Dog().";
+  }
+  if (/Expected property name/i.test(raw)) {
+    return "Expected a field or method name after '.'.";
+  }
+  if (/Expected \]/i.test(raw)) {
+    return "Missing closing ']' in an array index.";
+  }
+  if (/Unclosed parenthesis/i.test(raw)) {
+    return "Missing closing ')' in an expression.";
+  }
+  if (/Unexpected end of expression/i.test(raw)) {
+    return "Expression ended too early.";
+  }
+  if (/Unexpected token/i.test(raw)) {
+    return "Unexpected token in expression. Check spelling and brackets.";
+  }
+  if (/Unrecognised statement:/i.test(raw)) {
+    return `${raw}. Check keyword spelling and required block endings (ENDIF, ENDWHILE, NEXT, ENDSWITCH).`;
+  }
+  return raw;
 }
 
 function normalizeVirtualFiles(files) {
