@@ -1,0 +1,8 @@
+{
+  "name": "ocr-pseudocode-teaching-tool",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/run.mjs"
+  }
+}

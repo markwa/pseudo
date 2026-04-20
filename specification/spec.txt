@@ -1,0 +1,243 @@
+PROJECT SPEC: OCR Pseudocode Teaching Tool
+
+Goal
+Build a pure client-side webpage for teaching OCR-style pseudocode. The app must provide:
+1. a text editor pane for entering OCR pseudocode
+2. a terminal/output pane for program interaction and results
+3. a translator that converts OCR pseudocode into JavaScript
+4. a runner that executes the translated JavaScript safely in-browser
+5. a beginner-friendly teaching experience that preserves OCR pseudocode terminology and behavior
+
+Core Product Requirements
+- Entire app runs client-side in the browser only.
+- No server-side execution.
+- User writes programs in OCR pseudocode syntax.
+- App translates pseudocode to JavaScript.
+- App runs the translated JavaScript and displays output in a terminal-like UI.
+- App supports user input prompts.
+- App is designed as a teaching tool, so it should expose:
+  - pseudocode source
+  - translated JavaScript
+  - runtime output
+  - clear syntax/runtime error messages mapped back to pseudocode lines where possible
+
+Teaching-Oriented UX
+- Split layout:
+  - left/top: pseudocode editor
+  - right/bottom: terminal/output
+- Optional collapsible panel: generated JavaScript
+- Buttons:
+  - Run
+  - Stop / Reset
+  - Clear Output
+  - Show JS
+  - Load Example
+- Terminal supports:
+  - printed output
+  - input prompts
+  - error display
+- Include built-in sample programs covering every OCR construct in this spec.
+- Keep syntax and vocabulary aligned with OCR pseudocode guide rather than inventing a new language.
+
+Language Scope
+Implement the OCR pseudocode constructs below. The translator/parser must accept these forms and preserve their intended semantics.
+
+
+AS AND A LEVEL COMPUTER SCIENCE
+Variables
+Variables are assigned using the = operator.
+x=3
+name=”Bob”
+A variable is declared the first time a value is assigned. It assumes the data type of the value it is given.
+Variables declared inside a function or procedure are local to that subroutine.
+Variables in the main program can be made global with the keyword global.
+global userid = 123
+Casting
+Variables can be typecast using the int str and float functions
+str(3) returns “3”
+int(“3”) returns 3
+float(“3.14”) returns 3.14
+Introduction
+The following guide shows the format pseudocode will appear in the examined components. It is provided to enable teachers to provide learners with familiarity before the exam. Learners are
+not expected to memorise the syntax of this pseudocode and when asked may provide answers in any style of pseudocode they choose providing its meaning could be reasonably inferred by a
+competent programmer.
+PSEUDOCODE GUIDE
+5
+AS AND A LEVEL COMPUTER SCIENCE
+Outputting to Screen
+print(string)
+Example:
+print(“hello”)
+Taking Input from User:
+variable=input(prompt to user)
+Example:
+name=input(“Please enter your name”)
+Iteration – Count Controlled
+for i=0 to 7
+ print(“Hello”)
+next i
+Will print hello 8 times (0-7 inclusive).
+Iteration – Condition Controlled
+while answer!=”computer”
+ answer=input(“What is the password?”)
+endwhile
+do
+ answer=input(“What is the password?”)
+until answer==”computer”
+PSEUDOCODE GUIDE
+6
+AS AND A LEVEL COMPUTER SCIENCE
+Logical Operators
+AND OR NOT
+eg
+while x<=5 AND flag==false
+Comparison Operators Arithmetic Operators
+== Equal to
+!= Not equal to
+< Less than
+<= Less than or equal to
+> Greater than
+>= Greater than or equal to
+Selection
+Selection will be carried out with if/else and switch/case
+if/else
+if entry==”a” then
+ print(“You selected A”)
+elseif entry==”b” then
+ print(“You selected B”)
+else
+ print(“Unrecognised selection”)
+endif
++ Addition e.g. x=6+5 gives 11
+- Subtraction e.g. x=6-5 gives 1
+* Multiplication e.g. x=12*2 gives 24
+/ Division e.g. x=12/2 gives 6
+MOD Modulus e.g. 12MOD5 gives 2
+DIV Quotient e.g. 17DIV5 gives 3
+^ Exponentiation e.g. 3^4 gives 81
+PSEUDOCODE GUIDE
+7
+AS AND A LEVEL COMPUTER SCIENCE
+switch/case
+switch entry:
+ case “A”:
+ print(“You selected A”)
+ case “B”:1
+ print(“You selected B”)
+ default:
+ print(“Unrecognised selection”)
+endswitch
+String Handling
+To get the length of a string:
+stringname.length
+To get a substring:
+stringname.subString(startingPosition, numberOfCharacters)
+NB The string will start with the 0th character.
+Example:
+someText=”Computer Science”
+print(someText.length)
+print(someText.substring(3,3))
+Will display:
+16
+put
+PSEUDOCODE GUIDE
+8
+AS AND A LEVEL COMPUTER SCIENCE
+Subroutines
+function triple(number)
+ return number*3
+endfunction
+Called from main program
+y=triple(7)
+procedure greeting(name)
+ print(“hello”+name)
+endprocedure
+Called from main program
+greeting(“Hamish”)
+Unless stated values passed to subroutines can be assumed to be passed by value. If this is relevant to the question byVal and byRef will be used. In the case below x is passed by value and y is
+passed by reference.
+procedure foobar(x:byVal, y:byRef)
+ … …
+endprocedure
+PSEUDOCODE GUIDE
+9
+AS AND A LEVEL COMPUTER SCIENCE
+Arrays
+Arrays will be 0 based and declared with the keyword array.
+array names[5]
+names[0]=”Ahmad”
+names[1]=”Ben”
+names[2]=”Catherine”
+names[3]=”Dana”
+names[4]=”Elijah”
+print(names[3])
+Example of 2D array:
+Array board[8,8]
+board[0,0]=”rook”
+PSEUDOCODE GUIDE
+10
+AS AND A LEVEL COMPUTER SCIENCE
+Reading to and Writing from Files
+To open a file to read from openRead is used and readLine to return a line of text from the file.
+The following program makes x the first line of sample.txt
+myFile = openRead(“sample.txt”)
+x = myFile.readLine()
+myFile.close()
+endOfFile() is used to determine the end of the file. The following program will print out the
+contents of sample.txt
+myFile = openRead(“sample.txt”)
+while NOT myFile.endOfFile()
+ print(myFile.readLine())
+endwhile
+myFile.close()
+To open a file to write to openWrite is used and writeLine to add a line of text to the file. In the program below hello world is made the contents of sample.txt (any previous contents are
+overwritten).
+myFile = openWrite(“sample.txt”)
+myFile.writeLine(“Hello World”)
+myFile.close()
+Comments
+Comments are denoted by //
+print(“Hello World”) //This is a comment
+PSEUDOCODE GUIDE
+11
+AS AND A LEVEL COMPUTER SCIENCE
+Object-Oriented
+Object oriented code will match the pseudocode listed above with the following extensions:
+Methods and Attributes:
+Methods and attributes can be assumed to be public unless otherwise stated. Where the access
+level is relevant to the question it will always be explicit in the code denoted by the keywords.
+public and private.
+private attempts = 3
+public procedure setAttempts(number)
+ attempts=number
+endprocedure
+private function getAttempts()
+ return attempts
+endfunction
+Methods will always be instance methods, learners aren’t expected to be aware of static methods.
+They will be called using object.method so
+player.setAttempts(5)
+print(player.getAttempts())
+PSEUDOCODE GUIDE
+12
+AS AND A LEVEL COMPUTER SCIENCE
+Constructors and Inheritance
+Constructors will be procedures with the name new.
+class Pet
+ private name
+ public procedure new(givenName)
+ name=givenName
+ endprocedure
+endclass
+Inheritance is denoted by the inherits keyword, superclass methods will be called with the keyword super. i.e. super.methodName(parameters) in the case of the constructor this would be
+super.new()
+class Dog inherits Pet
+ private breed
+ public procedure new(givenName, givenBreed)
+ super.new(givenName)
+ breed=givenBreed
+ endprocedure
+endclass
+To create an instance of an object the following format is usedobjectName = new className(parameters)
+eg
+myDog = new Dog(“Fido”,”Scottish Terrier”)

@@ -1,0 +1,67 @@
+ # Translator Regression Suite
+
+  ## Summary
+
+  Build a spec-driven regression suite for translator.js that tests translation, mapped line numbers, and executable output from the generated JavaScript. The
+  suite should cover every OCR construct in specification/spec.txt with a mix of golden-output checks, runtime checks, and negative syntax/error cases.
+
+  ## Key Changes
+
+  - Add a minimal test harness for the repo:
+      - ESM-based tests for translateProgram
+      - fixture files for OCR pseudocode inputs
+      - a Node VM runtime stub for print, input, openRead, and openWrite
+  - Organize coverage by OCR language area:
+      - variables, casting, comments, and global assignment
+      - print / input
+      - count-controlled and condition-controlled loops
+      - if/elseif/else, switch/case/default
+      - strings, length, substring, arrays, and 2D arrays
+      - functions, procedures, parameters, and return values
+      - classes, constructors, inheritance, super, and method calls
+      - file I/O syntax translated to the virtual runtime API
+  - Add golden tests that assert:
+      - generated JS contains the expected runtime calls and control flow shapes
+      - line-map entries point back to the original pseudocode lines
+  - Add execution tests that run translated JS in a sandbox and assert observable behavior:
+      - printed output
+      - prompt/input flow
+      - array indexing
+      - string handling
+      - file read/write behavior
+      - object construction and inherited method dispatch
+  - Add negative tests for parser and translation failures:
+      - missing block terminators
+      - malformed if / switch / loop headers
+      - invalid class bodies
+      - invalid array declarations
+      - unsupported or unrecognized statements
+      - runtime error reporting with mapped pseudocode lines
+
+  ## Test Plan
+
+  - One fixture per spec section, plus one end-to-end “full coverage” program that combines multiple constructs.
+  - For each fixture:
+      - translate source
+      - compare generated JS to an expected snapshot or normalized pattern
+      - execute the JS in a stub runtime when semantics matter
+      - assert the reported pseudocode line numbers for errors
+  - Specific regression cases to include:
+      - OCR quote normalization and comment stripping
+      - MOD and DIV arithmetic
+      - substring(start, count) mapping
+      - 0-based arrays and 2D indexing
+      - while NOT ... and do until ...
+      - super.new(...) in inherited constructors
+      - class field initialization and instance property access
+      - file read/write loop using the virtual filesystem
+  - Keep snapshots small and behavior-focused:
+      - do not snapshot the entire translator internals
+      - snapshot only the emitted JS and line-map output that is contractually important
+
+  ## Assumptions
+
+  - translator.js stays as a pure ESM module exporting translateProgram.
+  - The repo currently has no test runner, so the plan assumes adding a minimal test setup rather than fitting into an existing framework.
+  - Core regression coverage should be runnable in Node without a browser; browser UI smoke tests can stay separate.
+  - File I/O regression tests should use the same virtual runtime behavior the app already exposes, not real filesystem access.

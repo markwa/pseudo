@@ -1,0 +1,34 @@
+function triple(number)
+  return number * 3
+endfunction
+
+procedure greeting(name)
+  print("hello " + name)
+endprocedure
+
+y = triple(7)
+greeting("Hamish")
+
+class Pet
+  private name
+  public procedure new(givenName)
+    name = givenName
+  endprocedure
+  public function getName()
+    return name
+  endfunction
+endclass
+
+class Dog inherits Pet
+  private breed
+  public procedure new(givenName, givenBreed)
+    super.new(givenName)
+    breed = givenBreed
+  endprocedure
+  public function describe()
+    return getName() + " - " + breed
+  endfunction
+endclass
+
+myDog = new Dog("Fido", "Scottish Terrier")
+print(myDog.describe())

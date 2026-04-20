@@ -1,0 +1,10 @@
+global userid = 123
+name = input("Enter your name: ")
+print("Hello " + name)
+score = 6 + 5
+print("Score is " + str(score))
+if score > 10 then
+  print("big")
+else
+  print("small")
+endif
