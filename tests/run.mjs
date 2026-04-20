@@ -1324,6 +1324,109 @@ const cases = [
     assert.deepEqual(output, ["12"]);
   }],
 
+  ["procedure locals do not overwrite globals with the same name", async () => {
+    const source = [
+      "counter = 5",
+      "",
+      "PROCEDURE bump()",
+      "  counter = 10",
+      "  PRINT(STR(counter))",
+      "ENDPROCEDURE",
+      "",
+      "bump()",
+      "PRINT(STR(counter))"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["10", "5"]);
+  }],
+
+  ["derived classes can call inherited getters after SUPER.NEW", async () => {
+    const source = [
+      "CLASS Book",
+      "  PRIVATE title",
+      "  PUBLIC PROCEDURE NEW(startTitle)",
+      "    title = startTitle",
+      "  ENDPROCEDURE",
+      "  PUBLIC FUNCTION getTitle()",
+      "    RETURN title",
+      "  ENDFUNCTION",
+      "ENDCLASS",
+      "",
+      "CLASS Novel INHERITS Book",
+      "  PRIVATE edition",
+      "  PUBLIC PROCEDURE NEW(startTitle, startEdition)",
+      "    SUPER.NEW(startTitle)",
+      "    edition = startEdition",
+      "  ENDPROCEDURE",
+      "  PUBLIC FUNCTION describe()",
+      '    RETURN getTitle() + " #" + STR(edition)',
+      "  ENDFUNCTION",
+      "ENDCLASS",
+      "",
+      'myNovel = NEW Novel("Dune", 2)',
+      "PRINT(myNovel.describe())"
+    ].join("\n");
+    const { js, output } = await runSource(source);
+
+    assert.match(js, /super\(startTitle\);/);
+    assert.deepEqual(output, ["Dune #2"]);
+  }],
+
+  ["private fields are accessed through class methods", async () => {
+    const source = [
+      "CLASS SecretBox",
+      "  PRIVATE value",
+      "  PUBLIC PROCEDURE NEW(startValue)",
+      "    value = startValue",
+      "  ENDPROCEDURE",
+      "  PUBLIC FUNCTION reveal()",
+      "    RETURN value",
+      "  ENDFUNCTION",
+      "ENDCLASS",
+      "",
+      'box = NEW SecretBox("hidden")',
+      "PRINT(box.reveal())"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["hidden"]);
+  }],
+
+  ["boolean precedence keeps NOT above AND above OR", async () => {
+    const source = [
+      "a = TRUE",
+      "b = FALSE",
+      "c = TRUE",
+      "IF NOT a AND b OR c THEN",
+      '  PRINT("yes")',
+      "ELSE",
+      '  PRINT("no")',
+      "ENDIF"
+    ].join("\n");
+    const { js, output } = await runSource(source);
+
+    assert.match(js, /if \(\(\(\(!\(a\)\) && b\) \|\| c\)\) \{/);
+    assert.deepEqual(output, ["yes"]);
+  }],
+
+  ["empty files still work with ENDOFFILE", async () => {
+    const source = [
+      'myFile = OPENREAD("empty.txt")',
+      "WHILE NOT myFile.ENDOFFILE()",
+      "  PRINT(myFile.READLINE())",
+      "ENDWHILE",
+      "myFile.CLOSE()",
+      'PRINT("done")'
+    ].join("\n");
+    const { output, files } = await runSource(source, {
+      files: new Map([["empty.txt", []]])
+    });
+
+    assert.deepEqual(output, ["done"]);
+    assert.deepEqual(files.get("empty.txt"), []);
+  }],
+
   ["Input_Until_Minus_One sample translates its loop and accumulator", () => {
     const { js } = translateSource(loadTestcase("Input_Until_Minus_One"));
 
