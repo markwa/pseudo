@@ -825,6 +825,164 @@ const cases = [
     assert.deepEqual(output, ["Hello World", "5"]);
   }],
 
+  // --- instructional examples ---
+  ["input example greets the entered name", async () => {
+    const source = [
+      "// Ask the user for a name and print a greeting.",
+      'name = INPUT("Name? ")',
+      'PRINT("Hello " + name)'
+    ].join("\n");
+    const { output } = await runSource(source, { inputs: ["Mark"] });
+
+    assert.deepEqual(output, ["Hello Mark"]);
+  }],
+
+  ["selection example chooses the middle branch", async () => {
+    const source = [
+      "// Use IF / ELSEIF / ELSE to choose one branch.",
+      "score = 72",
+      "IF score >= 80 THEN",
+      '  PRINT("Excellent")',
+      "ELSEIF score >= 50 THEN",
+      '  PRINT("Pass")',
+      "ELSE",
+      '  PRINT("Try again")',
+      "ENDIF"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["Pass"]);
+  }],
+
+  ["counted loop example prints three iterations", async () => {
+    const source = [
+      "// Count from 1 to 3 with a FOR loop.",
+      "FOR i = 1 TO 3",
+      '  PRINT("Count " + STR(i))',
+      "NEXT i"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["Count 1", "Count 2", "Count 3"]);
+  }],
+
+  ["while loop example counts down to done", async () => {
+    const source = [
+      "// Repeat while the condition stays true.",
+      "n = 3",
+      "WHILE n > 0",
+      "  PRINT(STR(n))",
+      "  n = n - 1",
+      "ENDWHILE",
+      'PRINT("Done")'
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["3", "2", "1", "Done"]);
+  }],
+
+  ["do until example repeats until the condition becomes true", async () => {
+    const source = [
+      "// Keep going until the condition becomes true.",
+      "attempts = 0",
+      "DO",
+      "  attempts = attempts + 1",
+      '  PRINT("Try " + STR(attempts))',
+      "UNTIL attempts == 3",
+      'PRINT("Stopped")'
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["Try 1", "Try 2", "Try 3", "Stopped"]);
+  }],
+
+  ["arrays example shows length and substring access", async () => {
+    const source = [
+      "// Store values in an array and read string properties.",
+      "ARRAY names[3]",
+      'names[0] = "Ada"',
+      'names[1] = "Ben"',
+      'names[2] = "Cy"',
+      "PRINT(names[1])",
+      "",
+      'text = "hello"',
+      "PRINT(STR(text.LENGTH))",
+      "PRINT(text.SUBSTRING(1, 3))"
+    ].join("\n");
+    const { js, output } = await runSource(source);
+
+    assert.match(js, /\.length/);
+    assert.match(js, /\.substring\(1, \(1\) \+ \(3\)\)/);
+    assert.deepEqual(output, ["Ben", "5", "ell"]);
+  }],
+
+  ["files example writes and reads a line", async () => {
+    const source = [
+      "// Write a file, then read it back line by line.",
+      'myFile = OPENWRITE("sample.txt")',
+      'myFile.WRITELINE("Hello World")',
+      "myFile.CLOSE()",
+      "",
+      'myFile = OPENREAD("sample.txt")',
+      "PRINT(myFile.READLINE())",
+      "myFile.CLOSE()"
+    ].join("\n");
+    const { output, files } = await runSource(source);
+
+    assert.deepEqual(output, ["Hello World"]);
+    assert.deepEqual(files.get("sample.txt"), ["Hello World"]);
+  }],
+
+  ["casting example converts values before arithmetic", async () => {
+    const source = [
+      "// Convert strings into numbers with INT and FLOAT.",
+      'whole = INT("7")',
+      'decimal = FLOAT("3.5")',
+      "PRINT(STR(whole + 1))",
+      "PRINT(STR(decimal + 0.5))"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["8", "4"]);
+  }],
+
+  ["functions example returns a computed value", async () => {
+    const source = [
+      "// Define a function and call it from the main program.",
+      "FUNCTION double(n)",
+      "  RETURN n * 2",
+      "ENDFUNCTION",
+      "",
+      "PRINT(STR(double(4)))"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["8"]);
+  }],
+
+  ["classes example constructs and uses an object", async () => {
+    const source = [
+      "// Create a class with a constructor and a method.",
+      "CLASS Greeter",
+      "  PRIVATE name",
+      "  PUBLIC PROCEDURE NEW(who)",
+      "    name = who",
+      "  ENDPROCEDURE",
+      "  PUBLIC FUNCTION greet()",
+      '    RETURN "Hi " + name',
+      "  ENDFUNCTION",
+      "ENDCLASS",
+      "",
+      'g = NEW Greeter("Mia")',
+      "PRINT(g.greet())"
+    ].join("\n");
+    const { js, output } = await runSource(source);
+
+    assert.match(js, /constructor\(who\)/);
+    assert.doesNotMatch(js, /constructor\(\.\.\.args\)/);
+    assert.deepEqual(output, ["Hi Mia"]);
+  }],
+
   ["Input_Until_Minus_One sample translates its loop and accumulator", () => {
     const { js } = translateSource(loadTestcase("Input_Until_Minus_One"));
 

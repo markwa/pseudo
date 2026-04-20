@@ -435,7 +435,7 @@ function parseClass(lines, startIndex, ctx) {
     }
     const methodMatch = current.match(/^(?:(public|private)\s+)?(function|procedure)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*$/i);
     if (methodMatch) {
-      classCtx.methods.add(methodMatch[3]);
+      classCtx.methods.add(methodMatch[3].toLowerCase());
       const isConstructor = methodMatch[2].toLowerCase() === "procedure" && methodMatch[3].toLowerCase() === "new";
       const parsedMethod = parseFunction(lines, i, ctx, true, {
         kind: isConstructor ? "constructor" : "method",

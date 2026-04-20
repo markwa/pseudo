@@ -4,101 +4,106 @@ const STORAGE_KEY = "ocr-pseudocode-teaching-tool:v1";
 
 const EXAMPLES = [
   {
-    name: "Basics",
-    code: `global userid = 123
-name = input("Enter your name: ")
-print("Hello " + name)
-score = 6 + 5
-print("Score is " + str(score))
-if score > 10 then
-  print("big")
-else
-  print("small")
-endif`
+    name: "Input",
+    code: `// Ask the user for a name and print a greeting.
+name = INPUT("Name? ")
+PRINT("Hello " + name)`
   },
   {
-    name: "Selection and loops",
-    code: `count = 0
-for i=0 to 2
-  print("Loop " + str(i))
-next i
-
-answer = ""
-while answer != "computer"
-  answer = input("Password? ")
-endwhile
-
-do
-  answer = input("Type computer to stop: ")
-until answer == "computer"
-
-switch answer:
-  case "computer":
-    print("Unlocked")
-  default:
-    print("Nope")
-endswitch`
+    name: "Selection",
+    code: `// Use IF / ELSEIF / ELSE to choose one branch.
+score = 72
+IF score >= 80 THEN
+  PRINT("Excellent")
+ELSEIF score >= 50 THEN
+  PRINT("Pass")
+ELSE
+  PRINT("Try again")
+ENDIF`
   },
   {
-    name: "Arrays, strings, files",
-    code: `array names[5]
-names[0] = "Ahmad"
+    name: "Counted loop",
+    code: `// Count from 1 to 3 with a FOR loop.
+FOR i = 1 TO 3
+  PRINT("Count " + STR(i))
+NEXT i`
+  },
+  {
+    name: "While loop",
+    code: `// Repeat while the condition stays true.
+n = 3
+WHILE n > 0
+  PRINT(STR(n))
+  n = n - 1
+ENDWHILE
+PRINT("Done")`
+  },
+  {
+    name: "Do until",
+    code: `// Keep going until the condition becomes true.
+attempts = 0
+DO
+  attempts = attempts + 1
+  PRINT("Try " + STR(attempts))
+UNTIL attempts == 3
+PRINT("Stopped")`
+  },
+  {
+    name: "Arrays",
+    code: `// Store values in an array and read string properties.
+ARRAY names[3]
+names[0] = "Ada"
 names[1] = "Ben"
-names[2] = "Catherine"
-names[3] = "Dana"
-names[4] = "Elijah"
-print(names[3])
+names[2] = "Cy"
+PRINT(names[1])
 
-someText = "Computer Science"
-print(someText.length)
-print(someText.substring(3, 3))
-
-myFile = openWrite("sample.txt")
-myFile.writeLine("Hello World")
-myFile.close()
-
-myFile = openRead("sample.txt")
-while NOT myFile.endOfFile()
-  print(myFile.readLine())
-endwhile
-myFile.close()`
+text = "hello"
+PRINT(STR(text.LENGTH))
+PRINT(text.SUBSTRING(1, 3))`
   },
   {
-    name: "Subroutines and OOP",
-    code: `function triple(number)
-  return number * 3
-endfunction
+    name: "Files",
+    code: `// Write a file, then read it back line by line.
+myFile = OPENWRITE("sample.txt")
+myFile.WRITELINE("Hello World")
+myFile.CLOSE()
 
-procedure greeting(name)
-  print("hello " + name)
-endprocedure
+myFile = OPENREAD("sample.txt")
+PRINT(myFile.READLINE())
+myFile.CLOSE()`
+  },
+  {
+    name: "Casting",
+    code: `// Convert strings into numbers with INT and FLOAT.
+whole = INT("7")
+decimal = FLOAT("3.5")
+PRINT(STR(whole + 1))
+PRINT(STR(decimal + 0.5))`
+  },
+  {
+    name: "Functions",
+    code: `// Define a function and call it from the main program.
+FUNCTION double(n)
+  RETURN n * 2
+ENDFUNCTION
 
-y = triple(7)
-greeting("Hamish")
+PRINT(STR(double(4)))`
+  },
+  {
+    name: "Classes",
+    code: `// Create a class with a constructor and a method.
+CLASS Greeter
+  PRIVATE name
+  PUBLIC PROCEDURE NEW(who)
+    name = who
+  ENDPROCEDURE
+  PUBLIC FUNCTION greet()
+    RETURN "Hi " + name
+  ENDFUNCTION
+ENDCLASS
 
-class Pet
-  private name
-  public procedure new(givenName)
-    name = givenName
-  endprocedure
-  public function getName()
-    return name
-  endfunction
-endclass
-
-class Dog inherits Pet
-  private breed
-  public procedure new(givenName, givenBreed)
-    super.new(givenName)
-    breed = givenBreed
-  endprocedure
-  public function describe()
-    return getName() + " - " + breed
-  endfunction
-endclass
-
-myDog = new Dog("Fido", "Scottish Terrier")
-print(myDog.describe())`
+g = NEW Greeter("Mia")
+PRINT(g.greet())`
   }
 ];
 
@@ -159,6 +164,7 @@ const app = Vue.createApp({
       immediate: true
     },
     selectedExample() {
+      this.loadExample();
       this.persistState();
     },
     showJs() {

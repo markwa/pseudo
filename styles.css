@@ -183,6 +183,7 @@ h1 {
   tab-size: 2;
   white-space: pre;
   overflow: auto;
+  font-weight: 300;
 }
 
 .terminal-panel {
@@ -201,6 +202,7 @@ h1 {
   border: 1px solid rgba(99, 214, 193, 0.12);
   overflow: auto;
   font: 500 0.95rem/1.55 var(--mono);
+  font-weight: 300;
 }
 
 .terminal-line {
@@ -234,6 +236,7 @@ h1 {
   background: transparent;
   color: inherit;
   font: inherit;
+  font-weight: 300;
   padding: 0;
   margin: 0;
   caret-color: var(--accent-2);

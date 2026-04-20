@@ -19,7 +19,6 @@
             <option v-for="(example, idx) in examples" :key="example.name" :value="idx">{{ example.name }}</option>
           </select>
         </label>
-        <button class="btn secondary" @click="loadExample">Load Example</button>
         <button class="btn primary" @click="runProgram" :disabled="running">Run</button>
         <button class="btn" @click="stopProgram">Stop / Reset</button>
         <button class="btn" @click="showJs = !showJs">{{ showJs ? 'Hide JS' : 'Show JS' }}</button>
