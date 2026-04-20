@@ -31,7 +31,7 @@ body {
 
 .app-shell {
   min-height: 100%;
-  padding: 22px;
+  padding: 12px 22px 22px;
   display: grid;
   gap: 18px;
 }
@@ -39,17 +39,17 @@ body {
 .topbar {
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
+  align-items: flex-start;
   gap: 18px;
-  padding: 6px 2px;
+  padding: 0 2px 2px;
 }
 
 .eyebrow {
   text-transform: uppercase;
   letter-spacing: 0.18em;
   color: var(--accent);
-  font-size: 0.74rem;
-  margin-bottom: 8px;
+  font-size: 1.11rem;
+  margin-bottom: 4px;
 }
 
 h1, h2 { margin: 0; }
@@ -64,7 +64,7 @@ h1 {
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
-  align-items: end;
+  align-items: flex-start;
 }
 
 .select-wrap {

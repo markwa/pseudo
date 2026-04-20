@@ -306,6 +306,11 @@ const app = Vue.createApp({
         field.focus();
       }
     },
+    focusPromptInput() {
+      if (this.promptActive) {
+        this.$nextTick(() => this.focusInput());
+      }
+    },
     syncEditorScroll(event) {
       const gutter = this.$refs.gutterScroll;
       if (gutter) {

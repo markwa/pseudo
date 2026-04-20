@@ -15,7 +15,6 @@
       </div>
       <div class="toolbar">
         <label class="select-wrap">
-          <span>Example</span>
           <select v-model.number="selectedExample">
             <option v-for="(example, idx) in examples" :key="example.name" :value="idx">{{ example.name }}</option>
           </select>
@@ -60,7 +59,7 @@
           <h2>Terminal</h2>
           <span class="status muted">{{ terminalStatus }}</span>
         </div>
-        <div class="terminal" ref="terminalScroll">
+        <div class="terminal" ref="terminalScroll" @mousedown="focusPromptInput">
           <div v-for="(line, idx) in outputLines" :key="idx" class="terminal-line" :class="line.kind">
             <span v-text="line.text"></span>
           </div>
