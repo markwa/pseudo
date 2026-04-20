@@ -553,10 +553,10 @@ function parseExpression(text, options = {}) {
 
   function parsePrimary() {
     const token = consume();
-    if (token.type === "number" || token.type === "string") {
-      return { type: "Literal", value: token.value, literalType: token.type };
-    }
-    if (token.type === "identifier") {
+      if (token.type === "number" || token.type === "string") {
+        return { type: "Literal", value: token.value, literalType: token.type };
+      }
+      if (token.type === "identifier") {
       if (token.value.toUpperCase() === "TRUE") return { type: "Literal", value: true, literalType: "boolean" };
       if (token.value.toUpperCase() === "FALSE") return { type: "Literal", value: false, literalType: "boolean" };
       if (token.value.toUpperCase() === "NULL") return { type: "Literal", value: null, literalType: "null" };
@@ -571,14 +571,32 @@ function parseExpression(text, options = {}) {
           args = parseArgumentList();
         }
         return { type: "New", callee: ctor.name, args };
+        }
+        return { type: "Identifier", name: token.value };
       }
-      return { type: "Identifier", name: token.value };
-    }
-    if (token.value === "(") {
-      const expr = parseBinary(0);
-      const next = consume();
-      if (next.value !== ")") {
-        throw new Error("Unclosed parenthesis");
+      if (token.value === "[") {
+        const elements = [];
+        if (peek() && peek().value === "]") {
+          consume("]");
+          return { type: "ArrayLiteral", elements };
+        }
+        while (true) {
+          elements.push(parseBinary(0));
+          const next = consume();
+          if (next.value === "]") {
+            break;
+          }
+          if (next.value !== ",") {
+            throw new Error("Expected , or ]");
+          }
+        }
+        return { type: "ArrayLiteral", elements };
+      }
+      if (token.value === "(") {
+        const expr = parseBinary(0);
+        const next = consume();
+        if (next.value !== ")") {
+          throw new Error("Unclosed parenthesis");
       }
       return expr;
     }
@@ -783,29 +801,30 @@ function emitExprNode(node, ctx, options = {}) {
     case "Call": {
       if (node.callee.type === "Identifier") {
         const name = node.callee.name;
+        const lowerName = name.toLowerCase();
         const args = node.args.map((arg) => emitExprNode(arg, ctx, options));
-        if (name === "print") {
+        if (lowerName === "print") {
           return `${allowAwait ? "await " : ""}__runtime.print(${args.join(", ") || '""'})`;
         }
-        if (name === "input") {
+        if (lowerName === "input") {
           return `${allowAwait ? "await " : ""}__runtime.input(${args[0] || '""'})`;
         }
-        if (name === "openRead") {
+        if (lowerName === "openread" || lowerName === "read") {
           return `${allowAwait ? "await " : ""}__runtime.openRead(${args[0] || '""'})`;
         }
-        if (name === "openWrite") {
+        if (lowerName === "openwrite" || lowerName === "write") {
           return `${allowAwait ? "await " : ""}__runtime.openWrite(${args[0] || '""'})`;
         }
-        if (name === "int") {
+        if (lowerName === "int") {
           return `Number.parseInt(${args[0] || "0"}, 10)`;
         }
-        if (name === "float") {
+        if (lowerName === "float") {
           return `Number.parseFloat(${args[0] || "0"})`;
         }
-        if (name === "str") {
+        if (lowerName === "str") {
           return `String(${args[0] || '""'})`;
         }
-        if (classContext && name !== "this" && name !== "super") {
+        if (classContext && lowerName !== "this" && lowerName !== "super") {
           return `${allowAwait ? "await " : ""}this.${name}(${args.join(", ")})`;
         }
         return `${allowAwait ? "await " : ""}${name}(${args.join(", ")})`;
@@ -813,13 +832,26 @@ function emitExprNode(node, ctx, options = {}) {
       if (node.callee.type === "Member") {
         const objectCode = emitExprNode(node.callee.object, ctx, options);
         const property = node.callee.property;
+        const lowerProperty = String(property).toLowerCase();
         const args = node.args.map((arg) => emitExprNode(arg, ctx, options));
-        if (String(property).toLowerCase() === "substring") {
+        if (lowerProperty === "substring") {
           const start = args[0] || "0";
           const count = args[1] || "0";
           return `(${objectCode}).substring(${start}, (${start}) + (${count}))`;
         }
-        if (node.callee.object.type === "Identifier" && node.callee.object.name.toLowerCase() === "super" && String(property).toLowerCase() === "new") {
+        if (lowerProperty === "readline") {
+          return `${allowAwait ? "await " : ""}${objectCode}.readLine(${args.join(", ")})`;
+        }
+        if (lowerProperty === "writeline") {
+          return `${allowAwait ? "await " : ""}${objectCode}.writeLine(${args.join(", ")})`;
+        }
+        if (lowerProperty === "endoffile") {
+          return `${allowAwait ? "await " : ""}${objectCode}.endOfFile(${args.join(", ")})`;
+        }
+        if (lowerProperty === "close") {
+          return `${allowAwait ? "await " : ""}${objectCode}.close(${args.join(", ")})`;
+        }
+        if (node.callee.object.type === "Identifier" && node.callee.object.name.toLowerCase() === "super" && lowerProperty === "new") {
           return `super(${args.join(", ")})`;
         }
         return `${allowAwait ? "await " : ""}${objectCode}.${property}(${args.join(", ")})`;
@@ -827,11 +859,16 @@ function emitExprNode(node, ctx, options = {}) {
       return `${allowAwait ? "await " : ""}${emitExprNode(node.callee, ctx, options)}(${node.args.map((arg) => emitExprNode(arg, ctx, options)).join(", ")})`;
     }
     case "Member":
+      if (String(node.property).toLowerCase() === "length") {
+        return `${emitExprNode(node.object, ctx, options)}.length`;
+      }
       return `${emitExprNode(node.object, ctx, options)}.${node.property}`;
     case "Index":
       return `${emitExprNode(node.object, ctx, options)}${node.indices.map((index) => `[${emitExprNode(index, ctx, options)}]`).join("")}`;
     case "New":
       return `new ${node.callee}(${node.args.map((arg) => emitExprNode(arg, ctx, options)).join(", ")})`;
+    case "ArrayLiteral":
+      return `[${node.elements.map((element) => emitExprNode(element, ctx, options)).join(", ")}]`;
     default:
       return "";
   }

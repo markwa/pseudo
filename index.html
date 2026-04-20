@@ -12,7 +12,6 @@
     <header class="topbar">
       <div>
         <div class="eyebrow">OCR pseudocode teaching tool</div>
-        <h1>Write OCR pseudocode, translate it, run it in-browser.</h1>
       </div>
       <div class="toolbar">
         <label class="select-wrap">
@@ -36,11 +35,12 @@
           <span class="status" :class="{ running }">{{ running ? 'Running' : 'Idle' }}</span>
         </div>
         <div class="editor-shell">
-          <div class="line-gutter" aria-hidden="true">
+          <div class="line-gutter" ref="gutterScroll" aria-hidden="true">
             <div v-for="n in editorLineCount" :key="n">{{ n }}</div>
           </div>
           <textarea
             v-model="editorText"
+            @scroll="syncEditorScroll"
             spellcheck="false"
             autocapitalize="off"
             autocomplete="off"

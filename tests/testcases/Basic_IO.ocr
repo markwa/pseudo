@@ -1,0 +1,11 @@
+// Simple Selection Example
+PRINT("Please enter your age")
+age = INPUT()
+
+IF age >= 18 THEN
+    PRINT("You are eligible to vote.")
+ELSEIF age == 17 THEN
+    PRINT("You can vote next year.")
+ELSE
+    PRINT("You are too young to vote.")
+ENDIF

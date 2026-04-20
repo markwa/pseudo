@@ -1,0 +1,4 @@
+// Output numbers from 1 to 5
+FOR i = 1 TO 5
+    PRINT(i)
+NEXT i

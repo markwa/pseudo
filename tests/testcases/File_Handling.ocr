@@ -1,0 +1,11 @@
+// Writing to a file
+myFile = openWrite("sample.txt")
+myFile.writeLine("Hello World")
+myFile.close()
+
+// Reading from a file
+myFile = openRead("sample.txt")
+WHILE NOT myFile.endOfFile()
+    PRINT(myFile.readLine())
+ENDWHILE
+myFile.close()

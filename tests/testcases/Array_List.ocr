@@ -1,0 +1,7 @@
+// Define an array
+names = ["Alice", "Bob", "Charlie"]
+
+// Iterate through an array
+FOR i = 0 TO names.length - 1
+    PRINT(names[i])
+NEXT i

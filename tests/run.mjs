@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
 import { loadFixture, runSource, translateSource } from "./helpers.mjs";
+
+function loadTestcase(name) {
+  return readFileSync(new URL(`./testcases/${name}.ocr`, import.meta.url), "utf8");
+}
 
 const cases = [
   ["basics fixture translates and runs", async () => {
@@ -771,6 +776,60 @@ const cases = [
     const { output } = await runSource(source);
 
     assert.deepEqual(output, ["a\rb"]);
+  }],
+
+  // --- sample exam programs ---
+  ["Basic_IO sample translates and follows the selected branch", async () => {
+    const { js, output } = await runSource(loadTestcase("Basic_IO"), { inputs: ["17"] });
+
+    assert.match(js, /await __runtime\.input\(""\)/);
+    assert.match(js, /await __runtime\.print\("Please enter your age"\)/);
+    assert.deepEqual(output, ["Please enter your age", "You can vote next year."]);
+  }],
+
+  ["Iteration sample runs the counted loop", async () => {
+    const { output } = await runSource(loadTestcase("Iteration"));
+
+    assert.deepEqual(output, ["1", "2", "3", "4", "5"]);
+  }],
+
+  ["Array_List sample parses array literals and iterates over them", async () => {
+    const { output } = await runSource(loadTestcase("Array_List"));
+
+    assert.deepEqual(output, ["Alice", "Bob", "Charlie"]);
+  }],
+
+  ["File_Handling sample reads back what it wrote", async () => {
+    const { js, output } = await runSource(loadTestcase("File_Handling"));
+
+    assert.match(js, /await __runtime\.openWrite\("sample\.txt"\)/);
+    assert.match(js, /await __runtime\.openRead\("sample\.txt"\)/);
+    assert.deepEqual(output, ["Hello World"]);
+  }],
+
+  ["uppercase file methods and string length member work like their lowercase forms", async () => {
+    const source = [
+      'text = "hello".LENGTH',
+      'myFile = OPENWRITE("sample.txt")',
+      'myFile.WRITELINE("Hello World")',
+      "myFile.CLOSE()",
+      'myFile = OPENREAD("sample.txt")',
+      "WHILE NOT myFile.ENDOFFILE()",
+      "  PRINT(myFile.READLINE())",
+      "ENDWHILE",
+      "myFile.CLOSE()",
+      "PRINT(text)"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["Hello World", "5"]);
+  }],
+
+  ["Input_Until_Minus_One sample translates its loop and accumulator", () => {
+    const { js } = translateSource(loadTestcase("Input_Until_Minus_One"));
+
+    assert.match(js, /while \(\(number != \(-1\)\)\)/);
+    assert.match(js, /String\(total\)/);
   }]
 ];
 

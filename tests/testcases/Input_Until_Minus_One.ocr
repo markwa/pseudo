@@ -1,0 +1,10 @@
+total = 0
+number = 0
+WHILE number != -1
+    PRINT("Enter a number (-1 to quit):")
+    number = INPUT()
+    IF number != -1 THEN
+        total = total + number
+    ENDIF
+ENDWHILE
+PRINT("Total: " + STR(total))
