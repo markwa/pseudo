@@ -3,14 +3,14 @@
 const STORAGE_KEY = "ocr-pseudocode-teaching-tool:v1";
 
 const SORT_INPUT_SOURCE_BY_LESSON = {
-  "Bubble Sort": "tests/testcases/sorting/bubble-sort/unsorted.txt",
-  "Insertion Sort": "tests/testcases/sorting/insertion-sort/unsorted.txt",
-  "Merge Sort": "tests/testcases/sorting/merge-sort/unsorted.txt",
-  "Quick Sort": "tests/testcases/sorting/quick-sort/unsorted.txt"
+  "Bubble Sort": "example-data/sorting/bubble-sort/unsorted.txt",
+  "Insertion Sort": "example-data/sorting/insertion-sort/unsorted.txt",
+  "Merge Sort": "example-data/sorting/merge-sort/unsorted.txt",
+  "Quick Sort": "example-data/sorting/quick-sort/unsorted.txt"
 };
 
-const SEARCH_INPUT_SOURCE = "tests/testcases/searching/common/search.txt";
-const FILE_LOOP_INPUT_SOURCE = "tests/testcases/files/sample.txt";
+const SEARCH_INPUT_SOURCE = "example-data/searching/common/search.txt";
+const FILE_LOOP_INPUT_SOURCE = "example-data/files/sample.txt";
 
 const EXAMPLES = [
   {
@@ -689,7 +689,9 @@ const app = Vue.createApp({
         if (!source) {
           continue;
         }
-        const response = await fetch(source);
+        const baseHref = typeof window !== "undefined" && window.location ? window.location.href : import.meta.url;
+        const resolvedSource = new URL(source, baseHref).href;
+        const response = await fetch(resolvedSource);
         if (!response.ok) {
           throw new Error(`Failed to load example file ${source}`);
         }

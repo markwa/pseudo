@@ -1154,7 +1154,10 @@ const cases = [
       setItem() {}
     };
     globalThis.fetch = async (url) => {
-      const text = readFileSync(new URL(`../${url}`, import.meta.url), "utf8");
+      const resolved = String(url).startsWith("http") || String(url).startsWith("file:")
+        ? new URL(String(url))
+        : new URL(`../${url}`, import.meta.url);
+      const text = readFileSync(resolved, "utf8");
       return {
         ok: true,
         text: async () => text
@@ -1194,7 +1197,10 @@ const cases = [
       setItem() {}
     };
     globalThis.fetch = async (url) => {
-      const text = readFileSync(new URL(`../${url}`, import.meta.url), "utf8");
+      const resolved = String(url).startsWith("http") || String(url).startsWith("file:")
+        ? new URL(String(url))
+        : new URL(`../${url}`, import.meta.url);
+      const text = readFileSync(resolved, "utf8");
       return {
         ok: true,
         text: async () => text
@@ -1234,7 +1240,10 @@ const cases = [
       setItem() {}
     };
     globalThis.fetch = async (url) => {
-      const text = readFileSync(new URL(`../${url}`, import.meta.url), "utf8");
+      const resolved = String(url).startsWith("http") || String(url).startsWith("file:")
+        ? new URL(String(url))
+        : new URL(`../${url}`, import.meta.url);
+      const text = readFileSync(resolved, "utf8");
       return {
         ok: true,
         text: async () => text
