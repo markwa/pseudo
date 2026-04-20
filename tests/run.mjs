@@ -7,6 +7,20 @@ function loadTestcase(name) {
   return readFileSync(new URL(`./testcases/${name}.ocr`, import.meta.url), "utf8");
 }
 
+function loadSortInputLines(folder) {
+  return readFileSync(
+    new URL(`./testcases/sorting/${folder}/unsorted.txt`, import.meta.url),
+    "utf8"
+  ).split(/\r?\n/);
+}
+
+function loadSearchInputLines() {
+  return readFileSync(
+    new URL("./testcases/searching/common/search.txt", import.meta.url),
+    "utf8"
+  ).split(/\r?\n/);
+}
+
 async function loadAppOptions() {
   const previousVue = globalThis.Vue;
   const captured = {};
@@ -1130,6 +1144,171 @@ const cases = [
     assert.deepEqual(output, ["Out of bounds", "Hit!", "You found the ship.", "...", "..X", "..."]);
   }],
 
+  ["sorting examples seed unsorted.txt when selected", async () => {
+    const originalLocalStorage = globalThis.localStorage;
+    const originalFetch = globalThis.fetch;
+    globalThis.localStorage = {
+      getItem() {
+        return null;
+      },
+      setItem() {}
+    };
+    globalThis.fetch = async (url) => {
+      const text = readFileSync(new URL(`../${url}`, import.meta.url), "utf8");
+      return {
+        ok: true,
+        text: async () => text
+      };
+    };
+
+    try {
+      const options = await loadAppOptions();
+      const app = buildAppInstance(options);
+      const bubbleIndex = app.examples.findIndex((example) => example.name === "Bubble Sort");
+
+      assert.ok(bubbleIndex >= 0);
+
+      app.selectedExample = bubbleIndex;
+      await app.loadExample();
+
+      assert.deepEqual(app.virtualFiles, [
+        {
+          path: "unsorted.txt",
+          lines: loadSortInputLines("bubble-sort")
+        }
+      ]);
+      assert.equal(app.selectedVirtualFilePath, "unsorted.txt");
+    } finally {
+      globalThis.localStorage = originalLocalStorage;
+      globalThis.fetch = originalFetch;
+    }
+  }],
+
+  ["file loop example seeds sample.txt when selected", async () => {
+    const originalLocalStorage = globalThis.localStorage;
+    const originalFetch = globalThis.fetch;
+    globalThis.localStorage = {
+      getItem() {
+        return null;
+      },
+      setItem() {}
+    };
+    globalThis.fetch = async (url) => {
+      const text = readFileSync(new URL(`../${url}`, import.meta.url), "utf8");
+      return {
+        ok: true,
+        text: async () => text
+      };
+    };
+
+    try {
+      const options = await loadAppOptions();
+      const app = buildAppInstance(options);
+      const fileLoopIndex = app.examples.findIndex((example) => example.name === "File loop");
+
+      assert.ok(fileLoopIndex >= 0);
+
+      app.selectedExample = fileLoopIndex;
+      await app.loadExample();
+
+      assert.deepEqual(app.virtualFiles, [
+        {
+          path: "sample.txt",
+          lines: ["alpha", "beta"]
+        }
+      ]);
+      assert.equal(app.selectedVirtualFilePath, "sample.txt");
+    } finally {
+      globalThis.localStorage = originalLocalStorage;
+      globalThis.fetch = originalFetch;
+    }
+  }],
+
+  ["sorting examples write sorted.txt in ascending order", async () => {
+    const originalLocalStorage = globalThis.localStorage;
+    const originalFetch = globalThis.fetch;
+    globalThis.localStorage = {
+      getItem() {
+        return null;
+      },
+      setItem() {}
+    };
+    globalThis.fetch = async (url) => {
+      const text = readFileSync(new URL(`../${url}`, import.meta.url), "utf8");
+      return {
+        ok: true,
+        text: async () => text
+      };
+    };
+
+    try {
+      const options = await loadAppOptions();
+      const app = buildAppInstance(options);
+      const sortNames = ["Bubble Sort", "Insertion Sort", "Merge Sort", "Quick Sort"];
+
+      for (const name of sortNames) {
+        const example = app.examples.find((entry) => entry.name === name);
+        assert.ok(example);
+        assert.ok(Array.isArray(example.files) && example.files.length === 1);
+
+        const folder = name.toLowerCase().replace(/\s+/g, "-");
+        const inputLines = loadSortInputLines(folder).map((line) => String(line));
+        const expected = [...inputLines].map((line) => Number(line)).sort((left, right) => left - right).map(String);
+        const { output, files } = await runSource(example.code, {
+          files: new Map([["unsorted.txt", inputLines]])
+        });
+
+        assert.deepEqual(output, [expected[0], expected[expected.length - 1]]);
+        assert.deepEqual(files.get("sorted.txt"), expected);
+      }
+    } finally {
+      globalThis.localStorage = originalLocalStorage;
+      globalThis.fetch = originalFetch;
+    }
+  }],
+
+  ["search examples find the expected target with linear and binary search", async () => {
+    const originalLocalStorage = globalThis.localStorage;
+    const originalFetch = globalThis.fetch;
+    globalThis.localStorage = {
+      getItem() {
+        return null;
+      },
+      setItem() {}
+    };
+    globalThis.fetch = async (url) => {
+      const text = readFileSync(new URL(`../${url}`, import.meta.url), "utf8");
+      return {
+        ok: true,
+        text: async () => text
+      };
+    };
+
+    try {
+      const options = await loadAppOptions();
+      const app = buildAppInstance(options);
+      const searchNames = ["Linear Search", "Binary Search"];
+      const inputLines = loadSearchInputLines().map((line) => String(line));
+
+      for (const name of searchNames) {
+        const example = app.examples.find((entry) => entry.name === name);
+        assert.ok(example);
+        assert.ok(Array.isArray(example.files) && example.files.length === 1);
+
+        const { output, files } = await runSource(example.code, {
+          inputs: ["carrot"],
+          files: new Map([["search.txt", inputLines]])
+        });
+
+        assert.deepEqual(output, ["Found at 5"]);
+        assert.equal(files.has("sorted.txt"), false);
+      }
+    } finally {
+      globalThis.localStorage = originalLocalStorage;
+      globalThis.fetch = originalFetch;
+    }
+  }],
+
   ["switch example chooses the matching case", async () => {
     const source = [
       "// SWITCH / CASE / DEFAULT choose from several fixed values.",
@@ -1764,7 +1943,21 @@ const cases = [
         ],
         selectedVirtualFilePath: "b.txt"
       });
-      assert.equal(initial.examples[initial.examples.length - 1].name, "Battleship");
+      assert.deepEqual(
+        initial.examples.slice(-9).map((example) => example.name),
+        [
+          "Algorithms",
+          "Bubble Sort",
+          "Insertion Sort",
+          "Merge Sort",
+          "Quick Sort",
+          "Linear Search",
+          "Binary Search",
+          "Examples",
+          "Battleship"
+        ]
+      );
+      assert.equal(initial.examples[initial.examples.length - 9].separator, true);
       assert.equal(initial.examples[initial.examples.length - 2].separator, true);
       initial.persistState();
 

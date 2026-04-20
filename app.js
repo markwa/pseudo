@@ -1,6 +1,16 @@
-import { translateProgram as sharedTranslateProgram } from "./translator.js";
+﻿import { translateProgram as sharedTranslateProgram } from "./translator.js";
 
 const STORAGE_KEY = "ocr-pseudocode-teaching-tool:v1";
+
+const SORT_INPUT_SOURCE_BY_LESSON = {
+  "Bubble Sort": "tests/testcases/sorting/bubble-sort/unsorted.txt",
+  "Insertion Sort": "tests/testcases/sorting/insertion-sort/unsorted.txt",
+  "Merge Sort": "tests/testcases/sorting/merge-sort/unsorted.txt",
+  "Quick Sort": "tests/testcases/sorting/quick-sort/unsorted.txt"
+};
+
+const SEARCH_INPUT_SOURCE = "tests/testcases/searching/common/search.txt";
+const FILE_LOOP_INPUT_SOURCE = "tests/testcases/files/sample.txt";
 
 const EXAMPLES = [
   {
@@ -168,6 +178,7 @@ PRINT(STR(globalThis.total))`
   },
   {
     name: "File loop",
+    files: [{ path: "sample.txt", source: FILE_LOOP_INPUT_SOURCE }],
     code: `// Read a file until ENDOFFILE is true.
 myFile = OPENREAD("sample.txt")
 WHILE NOT myFile.ENDOFFILE()
@@ -211,8 +222,253 @@ ENDCLASS
 g = NEW Greeter("Mia")
 PRINT(g.greet())`
   },
+
   {
-    name: "— Large examples —",
+    name: "Algorithms",
+    separator: true
+  },
+  {
+    name: "Bubble Sort",
+    files: [{ path: "unsorted.txt", source: SORT_INPUT_SOURCE_BY_LESSON["Bubble Sort"] }],
+    code: `// Read 100 numbers, bubble sort them, and write sorted.txt.
+ARRAY values[100]
+myFile = OPENREAD("unsorted.txt")
+index = 0
+WHILE NOT myFile.ENDOFFILE()
+  values[index] = INT(myFile.READLINE())
+  index = index + 1
+ENDWHILE
+myFile.CLOSE()
+
+FOR pass = 0 TO 98
+  FOR i = 0 TO 98 - pass
+    IF values[i] > values[i + 1] THEN
+      temp = values[i]
+      values[i] = values[i + 1]
+      values[i + 1] = temp
+    ENDIF
+  NEXT i
+NEXT pass
+
+sortedFile = OPENWRITE("sorted.txt")
+FOR i = 0 TO 99
+  sortedFile.WRITELINE(STR(values[i]))
+NEXT i
+sortedFile.CLOSE()
+
+PRINT(STR(values[0]))
+PRINT(STR(values[99]))`
+  },
+  {
+    name: "Insertion Sort",
+    files: [{ path: "unsorted.txt", source: SORT_INPUT_SOURCE_BY_LESSON["Insertion Sort"] }],
+    code: `// Read 100 numbers, insertion sort them, and write sorted.txt.
+ARRAY values[100]
+myFile = OPENREAD("unsorted.txt")
+index = 0
+WHILE NOT myFile.ENDOFFILE()
+  values[index] = INT(myFile.READLINE())
+  index = index + 1
+ENDWHILE
+myFile.CLOSE()
+
+FOR i = 1 TO 99
+  key = values[i]
+  j = i - 1
+  WHILE j >= 0 AND values[j] > key
+    values[j + 1] = values[j]
+    j = j - 1
+  ENDWHILE
+  values[j + 1] = key
+NEXT i
+
+sortedFile = OPENWRITE("sorted.txt")
+FOR i = 0 TO 99
+  sortedFile.WRITELINE(STR(values[i]))
+NEXT i
+sortedFile.CLOSE()
+
+PRINT(STR(values[0]))
+PRINT(STR(values[99]))`
+  },
+  {
+    name: "Merge Sort",
+    files: [{ path: "unsorted.txt", source: SORT_INPUT_SOURCE_BY_LESSON["Merge Sort"] }],
+    code: `// Read 100 numbers, merge sort them, and write sorted.txt.
+PROCEDURE merge(values, temp, left, mid, right)
+  i = left
+  j = mid + 1
+  k = left
+  WHILE i <= mid AND j <= right
+    IF values[i] <= values[j] THEN
+      temp[k] = values[i]
+      i = i + 1
+    ELSE
+      temp[k] = values[j]
+      j = j + 1
+    ENDIF
+    k = k + 1
+  ENDWHILE
+  WHILE i <= mid
+    temp[k] = values[i]
+    i = i + 1
+    k = k + 1
+  ENDWHILE
+  WHILE j <= right
+    temp[k] = values[j]
+    j = j + 1
+    k = k + 1
+  ENDWHILE
+  FOR idx = left TO right
+    values[idx] = temp[idx]
+  NEXT idx
+ENDPROCEDURE
+
+PROCEDURE mergeSort(values, temp, left, right)
+  IF left < right THEN
+    mid = (left + right) DIV 2
+    mergeSort(values, temp, left, mid)
+    mergeSort(values, temp, mid + 1, right)
+    merge(values, temp, left, mid, right)
+  ENDIF
+ENDPROCEDURE
+
+ARRAY values[100]
+ARRAY temp[100]
+myFile = OPENREAD("unsorted.txt")
+index = 0
+WHILE NOT myFile.ENDOFFILE()
+  values[index] = INT(myFile.READLINE())
+  index = index + 1
+ENDWHILE
+myFile.CLOSE()
+
+mergeSort(values, temp, 0, 99)
+
+sortedFile = OPENWRITE("sorted.txt")
+FOR i = 0 TO 99
+  sortedFile.WRITELINE(STR(values[i]))
+NEXT i
+sortedFile.CLOSE()
+
+PRINT(STR(values[0]))
+PRINT(STR(values[99]))`
+  },
+  {
+    name: "Quick Sort",
+    files: [{ path: "unsorted.txt", source: SORT_INPUT_SOURCE_BY_LESSON["Quick Sort"] }],
+    code: `// Read 100 numbers, quick sort them, and write sorted.txt.
+FUNCTION partition(values, low, high)
+  pivot = values[high]
+  i = low - 1
+  FOR j = low TO high - 1
+    IF values[j] <= pivot THEN
+      i = i + 1
+      temp = values[i]
+      values[i] = values[j]
+      values[j] = temp
+    ENDIF
+  NEXT j
+  temp = values[i + 1]
+  values[i + 1] = values[high]
+  values[high] = temp
+  RETURN i + 1
+ENDFUNCTION
+
+FUNCTION quickSort(values, low, high)
+  IF low < high THEN
+    pivotIndex = partition(values, low, high)
+    quickSort(values, low, pivotIndex - 1)
+    quickSort(values, pivotIndex + 1, high)
+  ENDIF
+ENDFUNCTION
+
+ARRAY values[100]
+myFile = OPENREAD("unsorted.txt")
+index = 0
+WHILE NOT myFile.ENDOFFILE()
+  values[index] = INT(myFile.READLINE())
+  index = index + 1
+ENDWHILE
+myFile.CLOSE()
+
+quickSort(values, 0, 99)
+
+sortedFile = OPENWRITE("sorted.txt")
+FOR i = 0 TO 99
+  sortedFile.WRITELINE(STR(values[i]))
+NEXT i
+sortedFile.CLOSE()
+
+PRINT(STR(values[0]))
+PRINT(STR(values[99]))`
+  },
+  {
+    name: "Linear Search",
+    files: [{ path: "search.txt", source: SEARCH_INPUT_SOURCE }],
+    code: `// Search a sorted list of vegetables linearly for a target value.
+ARRAY values[25]
+myFile = OPENREAD("search.txt")
+index = 0
+WHILE NOT myFile.ENDOFFILE()
+  values[index] = myFile.READLINE()
+  index = index + 1
+ENDWHILE
+myFile.CLOSE()
+
+target = INPUT("Target? ")
+found = FALSE
+index = 0
+WHILE index < 25 AND NOT found
+  IF values[index] == target THEN
+    found = TRUE
+    PRINT("Found at " + STR(index))
+  ENDIF
+  index = index + 1
+ENDWHILE
+
+IF NOT found THEN
+  PRINT("Not found")
+ENDIF`
+  },
+  {
+    name: "Binary Search",
+    files: [{ path: "search.txt", source: SEARCH_INPUT_SOURCE }],
+    code: `// Search a sorted list of vegetables by repeatedly halving the range.
+ARRAY values[25]
+myFile = OPENREAD("search.txt")
+index = 0
+WHILE NOT myFile.ENDOFFILE()
+  values[index] = myFile.READLINE()
+  index = index + 1
+ENDWHILE
+myFile.CLOSE()
+
+target = INPUT("Target? ")
+low = 0
+high = 24
+found = FALSE
+
+WHILE low <= high AND NOT found
+  mid = (low + high) DIV 2
+  IF values[mid] == target THEN
+    found = TRUE
+    PRINT("Found at " + STR(mid))
+  ELSE
+    IF values[mid] < target THEN
+      low = mid + 1
+    ELSE
+      high = mid - 1
+    ENDIF
+  ENDIF
+ENDWHILE
+
+IF NOT found THEN
+  PRINT("Not found")
+ENDIF`
+  },
+  {
+    name: "Examples",
     separator: true
   },
   {
@@ -306,6 +562,8 @@ const app = Vue.createApp({
       terminalStatus: "Ready",
       worker: null,
       pendingPromptResolver: null,
+      exampleLoadToken: 0,
+      exampleLoadPromise: Promise.resolve(),
       virtualFiles: [],
       selectedVirtualFilePath: "",
       editorRevision: 0,
@@ -381,15 +639,69 @@ const app = Vue.createApp({
       const resolvedExample = this.resolveSelectableExampleIndex(this.selectedExample);
       if (resolvedExample !== this.selectedExample) {
         this.selectedExample = resolvedExample;
-        return;
+        return this.exampleLoadPromise;
       }
-      this.clearVirtualFiles(false);
-      this.editorText = this.examples[this.selectedExample].code;
-      this.terminalStatus = `Loaded example: ${this.examples[this.selectedExample].name}`;
-      this.appendLine("Loaded example: " + this.examples[this.selectedExample].name, "info");
-      this.scrollTerminalToBottom();
+      const example = this.examples[this.selectedExample];
+      const loadToken = ++this.exampleLoadToken;
+      this.exampleLoadPromise = (async () => {
+        this.clearVirtualFiles(false);
+        this.editorText = example.code;
+        if (Array.isArray(example.files) && example.files.length) {
+          const files = await this.loadExampleFiles(example.files);
+          if (loadToken !== this.exampleLoadToken) {
+            return;
+          }
+          this.setVirtualFiles(files);
+        }
+        if (loadToken !== this.exampleLoadToken) {
+          return;
+        }
+        this.terminalStatus = `Loaded example: ${example.name}`;
+        this.appendLine("Loaded example: " + example.name, "info");
+        this.scrollTerminalToBottom();
+      })().catch((error) => {
+        if (loadToken !== this.exampleLoadToken) {
+          return;
+        }
+        this.terminalStatus = "Failed to load example";
+        this.appendLine(
+          `Failed to load example: ${error && error.message ? error.message : String(error)}`,
+          "error"
+        );
+        this.scrollTerminalToBottom();
+      });
+      return this.exampleLoadPromise;
+    },
+    async loadExampleFiles(files) {
+      const loaded = [];
+      for (const file of files) {
+        if (!file || typeof file.path !== "string" || !file.path) {
+          continue;
+        }
+        if (Array.isArray(file.lines)) {
+          loaded.push({
+            path: file.path,
+            lines: file.lines.map((line) => String(line))
+          });
+          continue;
+        }
+        const source = typeof file.source === "string" ? file.source : typeof file.url === "string" ? file.url : "";
+        if (!source) {
+          continue;
+        }
+        const response = await fetch(source);
+        if (!response.ok) {
+          throw new Error(`Failed to load example file ${source}`);
+        }
+        loaded.push({
+          path: file.path,
+          lines: splitVirtualFileText(await response.text())
+        });
+      }
+      return loaded;
     },
     async runProgram() {
+      await this.exampleLoadPromise;
       this.stopProgram(false);
       this.outputLines = [];
       this.terminalStatus = "Translating";
@@ -883,4 +1195,5 @@ function sanitizeDownloadName(path) {
   const name = String(path).split(/[/\\]/).pop() || "virtual-file.txt";
   return name || "virtual-file.txt";
 }
+
 
