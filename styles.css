@@ -68,16 +68,16 @@ h1 {
 }
 
 .select-wrap {
-  display: grid;
-  gap: 6px;
-  font-size: 0.82rem;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.84rem;
   color: var(--muted);
 }
 
 .select-wrap select,
-.input-bar input,
-.editor {
-  font: 500 0.98rem/1.5 var(--mono);
+.input-bar input {
+  font: 500 0.84rem/1.4 var(--ui);
   color: var(--text);
 }
 
@@ -86,8 +86,27 @@ h1 {
   background: rgba(8, 12, 25, 0.82);
   border: 1px solid rgba(159, 179, 236, 0.16);
   border-radius: 12px;
-  padding: 0.72rem 0.9rem;
+  padding: 0.55rem 0.78rem;
   outline: none;
+}
+
+.select-wrap select {
+  min-height: 2.25rem;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  line-height: 1;
+  padding-right: 2rem;
+}
+
+.select-arrow {
+  position: absolute;
+  right: 0.8rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 
 .workspace {
@@ -172,6 +191,7 @@ h1 {
 }
 
 .editor {
+  font: 500 0.98rem/1.5 var(--mono);
   width: 100%;
   height: 100%;
   min-height: 0;
@@ -192,6 +212,13 @@ h1 {
   min-height: 68vh;
 }
 
+.terminal-stack {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
 .terminal {
   margin: 14px 14px 0;
   padding: 14px;
@@ -203,6 +230,10 @@ h1 {
   overflow: auto;
   font: 500 0.95rem/1.55 var(--mono);
   font-weight: 300;
+}
+
+.terminal-stack.with-files .terminal {
+  flex: 2 1 0;
 }
 
 .terminal-line {
@@ -246,6 +277,125 @@ h1 {
   color: transparent;
 }
 
+.filesystem-viewer {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 0;
+  margin: 12px 14px 14px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(8, 12, 25, 0.88), rgba(10, 15, 31, 0.96));
+  border: 1px solid rgba(159, 179, 236, 0.12);
+}
+
+.filesystem-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.filesystem-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.filesystem-summary {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.filesystem-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filesystem-body {
+  display: grid;
+  grid-template-columns: minmax(12rem, 0.9fr) minmax(0, 1.2fr);
+  gap: 12px;
+  min-height: 0;
+  flex: 1;
+}
+
+.filesystem-list {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  gap: 8px;
+  padding-right: 2px;
+}
+
+.filesystem-entry {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: 1px solid rgba(159, 179, 236, 0.14);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  font: 500 0.9rem/1.4 var(--ui);
+  text-align: left;
+  cursor: pointer;
+}
+
+.filesystem-entry.active {
+  border-color: rgba(99, 214, 193, 0.32);
+  background: rgba(99, 214, 193, 0.08);
+}
+
+.filesystem-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filesystem-meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+  flex: 0 0 auto;
+}
+
+.filesystem-empty {
+  color: var(--muted);
+  font-size: 0.88rem;
+  padding: 0.5rem 0.1rem;
+}
+
+.filesystem-preview {
+  margin: 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(4, 7, 16, 0.62);
+  border: 1px solid rgba(159, 179, 236, 0.1);
+  color: var(--text);
+  font: 500 0.9rem/1.55 var(--mono);
+  white-space: pre-wrap;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .btn {
   border: 1px solid rgba(159, 179, 236, 0.16);
   background: rgba(255, 255, 255, 0.04);
@@ -255,6 +405,23 @@ h1 {
   font: 600 0.92rem var(--ui);
   cursor: pointer;
   transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+
+.btn-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 0.78rem;
+  font-size: 0.84rem;
+  line-height: 1;
+}
+
+.btn-compact i {
+  font-size: 0.92rem;
+}
+
+.btn-compact span {
+  white-space: nowrap;
 }
 
 .btn:hover:not(:disabled) {
@@ -316,4 +483,5 @@ h1 {
   .editor-shell { height: 56vh; }
   .terminal-panel { min-height: 56vh; }
   .js-view { height: 56vh; min-height: 56vh; }
+  .filesystem-body { grid-template-columns: 1fr; }
 }

@@ -807,6 +807,21 @@ const cases = [
     assert.deepEqual(output, ["Hello World"]);
   }],
 
+  ["preloaded virtual files are available to a program", async () => {
+    const source = [
+      'file = OPENREAD("notes.txt")',
+      "PRINT(file.READLINE())",
+      "PRINT(file.READLINE())",
+      "file.CLOSE()"
+    ].join("\n");
+    const { output, files } = await runSource(source, {
+      files: new Map([["notes.txt", ["alpha", "beta"]]])
+    });
+
+    assert.deepEqual(output, ["alpha", "beta"]);
+    assert.deepEqual(files.get("notes.txt"), ["alpha", "beta"]);
+  }],
+
   ["uppercase file methods and string length member work like their lowercase forms", async () => {
     const source = [
       'text = "hello".LENGTH',

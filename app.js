@@ -140,6 +140,7 @@ const app = Vue.createApp({
       generatedJs: "",
       lineMap: [],
       showJs: false,
+      showVirtualFs: false,
       running: false,
       promptActive: false,
       promptText: "",
@@ -147,12 +148,17 @@ const app = Vue.createApp({
       terminalStatus: "Ready",
       worker: null,
       pendingPromptResolver: null,
+      virtualFiles: [],
+      selectedVirtualFilePath: "",
       editorRevision: 0
     };
   },
   computed: {
     editorLineCount() {
       return Math.max(1, this.editorText.split(/\r?\n/).length);
+    },
+    selectedVirtualFile() {
+      return this.virtualFiles.find((file) => file.path === this.selectedVirtualFilePath) || null;
     }
   },
   watch: {
@@ -163,11 +169,23 @@ const app = Vue.createApp({
       },
       immediate: true
     },
+    virtualFiles: {
+      handler() {
+        this.persistState();
+      },
+      deep: true
+    },
+    selectedVirtualFilePath() {
+      this.persistState();
+    },
     selectedExample() {
       this.loadExample();
       this.persistState();
     },
     showJs() {
+      this.persistState();
+    },
+    showVirtualFs() {
       this.persistState();
     }
   },
@@ -207,7 +225,7 @@ const app = Vue.createApp({
       this.promptText = "";
       this.inputValue = "";
 
-      const worker = createRunnerWorker();
+      const worker = createRunnerWorker(this.serializeVirtualFiles());
       this.worker = worker;
       worker.onmessage = (event) => this.handleWorkerMessage(event);
       worker.onerror = (event) => {
@@ -254,6 +272,10 @@ const app = Vue.createApp({
       if (message.type === "output") {
         this.appendLine(message.text, message.kind || "output");
         this.scrollTerminalToBottom();
+        return;
+      }
+      if (message.type === "fs-state") {
+        this.setVirtualFiles(message.files);
         return;
       }
       if (message.type === "prompt") {
@@ -323,11 +345,116 @@ const app = Vue.createApp({
         gutter.scrollTop = event.target.scrollTop;
       }
     },
+    openVirtualFsUpload() {
+      const field = this.$refs.virtualFsUpload;
+      if (field) {
+        field.value = "";
+        field.click();
+      }
+    },
+    openEditorLoadDialog() {
+      const field = this.$refs.editorLoadInput;
+      if (field) {
+        field.value = "";
+        field.click();
+      }
+    },
+    saveEditorProgram() {
+      const blob = new Blob([this.editorText], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "program.ocr";
+      anchor.rel = "noopener";
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      this.terminalStatus = "Program saved";
+      this.appendLine("Saved program to program.ocr", "info");
+      this.scrollTerminalToBottom();
+    },
+    async handleEditorLoad(event) {
+      const file = event.target.files && event.target.files[0];
+      event.target.value = "";
+      if (!file) {
+        return;
+      }
+      const text = await file.text();
+      this.editorText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      this.terminalStatus = `Loaded program: ${file.name}`;
+      this.appendLine(`Loaded program: ${file.name}`, "info");
+      this.scrollTerminalToBottom();
+    },
+    async handleVirtualFsUpload(event) {
+      const files = Array.from(event.target.files || []);
+      event.target.value = "";
+      if (!files.length) {
+        return;
+      }
+      const uploaded = [];
+      for (const file of files) {
+        const text = await file.text();
+        uploaded.push({
+          path: file.webkitRelativePath || file.name,
+          lines: splitVirtualFileText(text)
+        });
+      }
+      this.mergeVirtualFiles(uploaded);
+      this.selectedVirtualFilePath = uploaded[0]?.path || this.selectedVirtualFilePath;
+      this.persistState();
+    },
+    downloadSelectedVirtualFile() {
+      const file = this.selectedVirtualFile;
+      if (!file) {
+        return;
+      }
+      const blob = new Blob([file.lines.join("\n")], { type: "text/plain;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = sanitizeDownloadName(file.path);
+      anchor.rel = "noopener";
+      anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    },
+    formatVirtualFile(file) {
+      const text = file.lines.join("\n");
+      return text === "" ? "(empty file)" : text;
+    },
+    mergeVirtualFiles(files) {
+      const merged = new Map(this.virtualFiles.map((file) => [file.path, [...file.lines]]));
+      for (const file of files) {
+        merged.set(file.path, [...file.lines]);
+      }
+      this.virtualFiles = normalizeVirtualFiles(
+        Array.from(merged.entries(), ([path, lines]) => ({ path, lines }))
+      );
+      this.ensureVirtualFileSelection();
+    },
+    setVirtualFiles(files) {
+      this.virtualFiles = normalizeVirtualFiles(files);
+      this.ensureVirtualFileSelection();
+      this.persistState();
+    },
+    serializeVirtualFiles() {
+      return this.virtualFiles.map((file) => ({
+        path: file.path,
+        lines: [...file.lines]
+      }));
+    },
+    ensureVirtualFileSelection() {
+      if (this.selectedVirtualFilePath && this.virtualFiles.some((file) => file.path === this.selectedVirtualFilePath)) {
+        return;
+      }
+      this.selectedVirtualFilePath = this.virtualFiles[0]?.path || "";
+    },
     persistState() {
       const payload = {
         editorText: this.editorText,
         selectedExample: this.selectedExample,
-        showJs: this.showJs
+        showJs: this.showJs,
+        showVirtualFs: this.showVirtualFs,
+        virtualFiles: this.serializeVirtualFiles(),
+        selectedVirtualFilePath: this.selectedVirtualFilePath
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     },
@@ -347,6 +474,16 @@ const app = Vue.createApp({
         if (typeof state.showJs === "boolean") {
           this.showJs = state.showJs;
         }
+        if (typeof state.showVirtualFs === "boolean") {
+          this.showVirtualFs = state.showVirtualFs;
+        }
+        if (Array.isArray(state.virtualFiles)) {
+          this.virtualFiles = normalizeVirtualFiles(state.virtualFiles);
+        }
+        if (typeof state.selectedVirtualFilePath === "string") {
+          this.selectedVirtualFilePath = state.selectedVirtualFilePath;
+        }
+        this.ensureVirtualFileSelection();
       } catch {
         // Ignore corrupt saved state.
       }
@@ -356,14 +493,23 @@ const app = Vue.createApp({
 
 app.mount("#app");
 
-function createRunnerWorker() {
+function createRunnerWorker(initialFiles = []) {
   const workerSource = `
     const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
     let pendingInput = null;
-    const fs = new Map();
+    const fs = new Map(${JSON.stringify(initialFiles)}.map((file) => [file.path, Array.isArray(file.lines) ? [...file.lines] : []]));
 
     function post(type, payload = {}) {
       self.postMessage({ type, ...payload });
+    }
+
+    function syncFiles() {
+      post("fs-state", {
+        files: Array.from(fs.entries(), ([path, lines]) => ({
+          path,
+          lines: [...lines]
+        }))
+      });
     }
 
     function toText(value) {
@@ -393,9 +539,11 @@ function createRunnerWorker() {
     function makeWriter(path) {
       const buffer = [];
       fs.set(path, buffer);
+      syncFiles();
       return {
         async writeLine(value) {
           buffer.push(toText(value));
+          syncFiles();
         },
         async readLine() {
           return "";
@@ -403,7 +551,9 @@ function createRunnerWorker() {
         async endOfFile() {
           return true;
         },
-        async close() {}
+        async close() {
+          syncFiles();
+        }
       };
     }
 
@@ -424,6 +574,7 @@ function createRunnerWorker() {
         const filename = toText(path);
         if (!fs.has(filename)) {
           fs.set(filename, []);
+          syncFiles();
         }
         return makeReader(filename);
       },
@@ -465,6 +616,16 @@ function createRunnerWorker() {
       }
 
       pendingInput = null;
+      if (Array.isArray(data.files)) {
+        fs.clear();
+        for (const file of data.files) {
+          if (!file || typeof file.path !== "string") {
+            continue;
+          }
+          fs.set(file.path, Array.isArray(file.lines) ? [...file.lines] : []);
+        }
+      }
+      syncFiles();
       try {
         const code = '"use strict";\\n' + data.jsCode + '\\n//# sourceURL=ocr-pseudocode-translated.js';
         const runner = new AsyncFunction("__runtime", code);
@@ -486,5 +647,33 @@ function formatRuntimeError(message) {
   }
   const pseudoLine = message.pseudoLine ? ` Pseudocode line ${message.pseudoLine}.` : "";
   return `Runtime error.${pseudoLine} ${message.message || ""}`.trim();
+}
+
+function normalizeVirtualFiles(files) {
+  if (!Array.isArray(files)) {
+    return [];
+  }
+  const normalized = [];
+  for (const file of files) {
+    if (!file || typeof file.path !== "string" || !file.path) {
+      continue;
+    }
+    normalized.push({
+      path: file.path,
+      lines: Array.isArray(file.lines) ? file.lines.map((line) => String(line)) : []
+    });
+  }
+  normalized.sort((left, right) => left.path.localeCompare(right.path));
+  return normalized;
+}
+
+function splitVirtualFileText(text) {
+  const normalized = String(text).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return normalized === "" ? [] : normalized.split("\n");
+}
+
+function sanitizeDownloadName(path) {
+  const name = String(path).split(/[/\\]/).pop() || "virtual-file.txt";
+  return name || "virtual-file.txt";
 }
 
