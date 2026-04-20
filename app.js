@@ -314,7 +314,6 @@ const app = Vue.createApp({
     async runProgram() {
       this.stopProgram(false);
       this.outputLines = [];
-      this.outputLines.push({ kind: "info", text: "Compiling pseudocode..." });
       this.terminalStatus = "Translating";
       this.scrollTerminalToBottom();
 
@@ -329,7 +328,6 @@ const app = Vue.createApp({
       this.generatedJs = compiled.js;
       this.lineMap = compiled.lineMap;
 
-      this.outputLines.push({ kind: "info", text: "Running translated JavaScript..." });
       this.running = true;
       this.terminalStatus = "Running";
       this.promptActive = false;
