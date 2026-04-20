@@ -289,6 +289,7 @@ const app = Vue.createApp({
       if (this.restoringState) {
         return;
       }
+      this.showJs = false;
       this.loadExample();
       this.persistState();
     },
