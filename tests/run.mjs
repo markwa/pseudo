@@ -52,6 +52,16 @@ const cases = [
     assert.equal(js.trim(), 'await __runtime.print("hello");');
     assert.deepEqual(lineMap, [2]);
   }],
+  ["translated JavaScript is indented for nested blocks", () => {
+    const source = [
+      "IF TRUE THEN",
+      '  PRINT("x")',
+      "ENDIF"
+    ].join("\n");
+    const { js } = translateSource(source);
+
+    assert.match(js, /if \(true\) \{\n  await __runtime\.print\("x"\);\n\}/);
+  }],
   ["mapped source lines preserve the original pseudocode line numbers", () => {
     const source = `print("one")\nprint("two")\nprint("three")`;
     const { lineMap } = translateSource(source);

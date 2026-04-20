@@ -12,9 +12,69 @@ export function translateProgram(source) {
   };
   const result = translateStatements(lines, 0, null, ctx);
   return {
-    js: result.lines.join("\n"),
+    js: formatGeneratedJs(result.lines).join("\n"),
     lineMap: result.lineMap
   };
+}
+
+function formatGeneratedJs(lines) {
+  const formatted = [];
+  const blockStack = [];
+  let indent = 0;
+
+  for (const rawLine of lines) {
+    const line = String(rawLine || "").trim();
+    if (!line) {
+      formatted.push("");
+      continue;
+    }
+
+    if (/^case\b/i.test(line) || /^default:$/i.test(line)) {
+      const currentSwitch = findCurrentSwitch(blockStack);
+      if (currentSwitch) {
+        indent = currentSwitch.baseIndent + 1;
+      }
+    } else if (/^\}/.test(line)) {
+      const closed = blockStack.pop();
+      indent = closed ? closed.baseIndent : Math.max(0, indent - 1);
+    }
+
+    formatted.push(`${"  ".repeat(Math.max(0, indent))}${line}`);
+
+    if (/^switch\b.*\{\s*$/i.test(line)) {
+      blockStack.push({ type: "switch", baseIndent: indent });
+      indent += 1;
+      continue;
+    }
+
+    if (/^case\b/i.test(line) || /^default:$/i.test(line)) {
+      const currentSwitch = findCurrentSwitch(blockStack);
+      indent = currentSwitch ? currentSwitch.baseIndent + 2 : indent + 1;
+      continue;
+    }
+
+    if (/\{\s*$/.test(line)) {
+      blockStack.push({ type: "block", baseIndent: indent });
+      indent += 1;
+      continue;
+    }
+
+    if (/^\}\s*while\b/i.test(line)) {
+      indent = Math.max(0, indent);
+      continue;
+    }
+  }
+
+  return formatted;
+}
+
+function findCurrentSwitch(blockStack) {
+  for (let i = blockStack.length - 1; i >= 0; i -= 1) {
+    if (blockStack[i].type === "switch") {
+      return blockStack[i];
+    }
+  }
+  return null;
 }
 
 function translateStatements(lines, startIndex, terminators, ctx) {
