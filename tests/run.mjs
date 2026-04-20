@@ -1176,6 +1176,154 @@ const cases = [
     assert.deepEqual(output, ["Hi Mia"]);
   }],
 
+  // --- practice exercises ---
+  ["exercise 1 grade calculator returns the correct grade", async () => {
+    const source = [
+      'score = INT(INPUT("Score? "))',
+      "",
+      "IF score < 0 OR score > 100 THEN",
+      '  PRINT("Invalid score")',
+      "ELSEIF score >= 80 THEN",
+      '  PRINT("Grade A")',
+      "ELSEIF score >= 70 THEN",
+      '  PRINT("Grade B")',
+      "ELSEIF score >= 60 THEN",
+      '  PRINT("Grade C")',
+      "ELSEIF score >= 50 THEN",
+      '  PRINT("Grade D")',
+      "ELSE",
+      '  PRINT("Grade U")',
+      "ENDIF"
+    ].join("\n");
+    const { output } = await runSource(source, { inputs: ["85"] });
+
+    assert.deepEqual(output, ["Grade A"]);
+  }],
+
+  ["exercise 2 password checker stops when the password is correct", async () => {
+    const source = [
+      'password = "computer"',
+      "attempts = 0",
+      "loggedIn = FALSE",
+      "",
+      "WHILE attempts < 3 AND NOT loggedIn",
+      '  entry = INPUT("Password? ")',
+      "  IF entry == password THEN",
+      '    PRINT("Access granted")',
+      "    loggedIn = TRUE",
+      "  ELSE",
+      "    attempts = attempts + 1",
+      '    PRINT("Wrong password")',
+      "  ENDIF",
+      "ENDWHILE",
+      "",
+      "IF NOT loggedIn THEN",
+      '  PRINT("Too many attempts")',
+      "ENDIF"
+    ].join("\n");
+    const { output } = await runSource(source, { inputs: ["wrong", "computer"] });
+
+    assert.deepEqual(output, ["Wrong password", "Access granted"]);
+  }],
+
+  ["exercise 3 highest of five numbers finds the maximum", async () => {
+    const source = [
+      "highest = -999999",
+      "",
+      "FOR i = 1 TO 5",
+      '  value = INT(INPUT("Number? "))',
+      "  IF value > highest THEN",
+      "    highest = value",
+      "  ENDIF",
+      "NEXT i",
+      "",
+      'PRINT("Highest is " + STR(highest))'
+    ].join("\n");
+    const { output } = await runSource(source, { inputs: ["1", "9", "3", "4", "2"] });
+
+    assert.deepEqual(output, ["Highest is 9"]);
+  }],
+
+  ["exercise 4 file logger writes and reads a file", async () => {
+    const source = [
+      'myFile = OPENWRITE("log.txt")',
+      'myFile.WRITELINE("First line")',
+      'myFile.WRITELINE("Second line")',
+      'myFile.WRITELINE("Third line")',
+      "myFile.CLOSE()",
+      "",
+      'myFile = OPENREAD("log.txt")',
+      "WHILE NOT myFile.ENDOFFILE()",
+      "  PRINT(myFile.READLINE())",
+      "ENDWHILE",
+      "myFile.CLOSE()"
+    ].join("\n");
+    const { output, files } = await runSource(source);
+
+    assert.deepEqual(output, ["First line", "Second line", "Third line"]);
+    assert.deepEqual(files.get("log.txt"), ["First line", "Second line", "Third line"]);
+  }],
+
+  ["exercise 5 grid search finds the target coordinates", async () => {
+    const source = [
+      "ARRAY grid[3, 3]",
+      "",
+      'grid[0, 0] = "A"',
+      'grid[0, 1] = "B"',
+      'grid[0, 2] = "C"',
+      'grid[1, 0] = "D"',
+      'grid[1, 1] = "E"',
+      'grid[1, 2] = "F"',
+      'grid[2, 0] = "G"',
+      'grid[2, 1] = "H"',
+      'grid[2, 2] = "I"',
+      "",
+      'target = "F"',
+      "found = FALSE",
+      "",
+      "FOR row = 0 TO 2",
+      "  FOR col = 0 TO 2",
+      "    IF grid[row, col] == target THEN",
+      '      PRINT("Found at " + STR(row) + ", " + STR(col))',
+      "      found = TRUE",
+      "    ENDIF",
+      "  NEXT col",
+      "NEXT row",
+      "",
+      "IF NOT found THEN",
+      '  PRINT("Not found")',
+      "ENDIF"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["Found at 1, 2"]);
+  }],
+
+  ["exercise 6 OO counter increments and returns its value", async () => {
+    const source = [
+      "CLASS Counter",
+      "  PRIVATE value",
+      "  PUBLIC PROCEDURE NEW(startValue)",
+      "    value = startValue",
+      "  ENDPROCEDURE",
+      "  PUBLIC PROCEDURE addOne()",
+      "    value = value + 1",
+      "  ENDPROCEDURE",
+      "  PUBLIC FUNCTION getValue()",
+      "    RETURN value",
+      "  ENDFUNCTION",
+      "ENDCLASS",
+      "",
+      "myCounter = NEW Counter(10)",
+      "myCounter.addOne()",
+      "myCounter.addOne()",
+      "PRINT(STR(myCounter.getValue()))"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["12"]);
+  }],
+
   ["Input_Until_Minus_One sample translates its loop and accumulator", () => {
     const { js } = translateSource(loadTestcase("Input_Until_Minus_One"));
 

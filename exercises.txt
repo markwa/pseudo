@@ -1,0 +1,152 @@
+OCR Pseudocode Practice Exercises
+
+Suggested order:
+1. Grade Calculator
+2. Password Checker With Retries
+3. Highest Of Five Numbers
+4. Simple File Logger
+5. Two-Dimensional Grid Search
+6. Simple OO Counter
+
+Exercise 1: Grade Calculator
+Task: Read a numeric score and print a grade.
+Practise: INPUT, IF / ELSEIF / ELSE, comparisons, validation.
+
+Exercise 2: Password Checker With Retries
+Task: Ask the user for a password until they enter the correct one or run out of attempts.
+Practise: INPUT, WHILE, IF / ELSE, counters, boolean logic.
+
+Exercise 3: Highest Of Five Numbers
+Task: Read five numbers and print the largest one.
+Practise: FOR, variables, comparisons, running maximum.
+
+Exercise 4: Simple File Logger
+Task: Write a few lines to a file, then read the file back and print the contents.
+Practise: OPENWRITE, WRITELINE, OPENREAD, READLINE, ENDOFFILE.
+
+Exercise 5: Two-Dimensional Grid Search
+Task: Store a small 2D array of values and search for a target item. Print the row and column when found.
+Practise: 2D arrays, nested loops, IF, string handling.
+
+Exercise 6: Simple OO Counter
+Task: Create a class with a starting value, a method to add one, and a method to show the current total.
+Practise: CLASS, NEW, PROCEDURE, FUNCTION, object methods, constructor state.
+
+----------------------------------------
+Model Answers
+----------------------------------------
+
+Model answer for Exercise 1: Grade Calculator
+score = INT(INPUT("Score? "))
+
+IF score < 0 OR score > 100 THEN
+  PRINT("Invalid score")
+ELSEIF score >= 80 THEN
+  PRINT("Grade A")
+ELSEIF score >= 70 THEN
+  PRINT("Grade B")
+ELSEIF score >= 60 THEN
+  PRINT("Grade C")
+ELSEIF score >= 50 THEN
+  PRINT("Grade D")
+ELSE
+  PRINT("Grade U")
+ENDIF
+
+
+Model answer for Exercise 2: Password Checker With Retries
+password = "computer"
+attempts = 0
+loggedIn = FALSE
+
+WHILE attempts < 3 AND NOT loggedIn
+  entry = INPUT("Password? ")
+  IF entry == password THEN
+    PRINT("Access granted")
+    loggedIn = TRUE
+  ELSE
+    attempts = attempts + 1
+    PRINT("Wrong password")
+  ENDIF
+ENDWHILE
+
+IF NOT loggedIn THEN
+  PRINT("Too many attempts")
+ENDIF
+
+
+Model answer for Exercise 3: Highest Of Five Numbers
+highest = -999999
+
+FOR i = 1 TO 5
+  value = INT(INPUT("Number? "))
+  IF value > highest THEN
+    highest = value
+  ENDIF
+NEXT i
+
+PRINT("Highest is " + STR(highest))
+
+
+Model answer for Exercise 4: Simple File Logger
+myFile = OPENWRITE("log.txt")
+myFile.WRITELINE("First line")
+myFile.WRITELINE("Second line")
+myFile.WRITELINE("Third line")
+myFile.CLOSE()
+
+myFile = OPENREAD("log.txt")
+WHILE NOT myFile.ENDOFFILE()
+  PRINT(myFile.READLINE())
+ENDWHILE
+myFile.CLOSE()
+
+
+Model answer for Exercise 5: Two-Dimensional Grid Search
+ARRAY grid[3, 3]
+
+grid[0, 0] = "A"
+grid[0, 1] = "B"
+grid[0, 2] = "C"
+grid[1, 0] = "D"
+grid[1, 1] = "E"
+grid[1, 2] = "F"
+grid[2, 0] = "G"
+grid[2, 1] = "H"
+grid[2, 2] = "I"
+
+target = "F"
+found = FALSE
+
+FOR row = 0 TO 2
+  FOR col = 0 TO 2
+    IF grid[row, col] == target THEN
+      PRINT("Found at " + STR(row) + ", " + STR(col))
+      found = TRUE
+    ENDIF
+  NEXT col
+NEXT row
+
+IF NOT found THEN
+  PRINT("Not found")
+ENDIF
+
+
+Model answer for Exercise 6: Simple OO Counter
+CLASS Counter
+  PRIVATE value
+  PUBLIC PROCEDURE NEW(startValue)
+    value = startValue
+  ENDPROCEDURE
+  PUBLIC PROCEDURE addOne()
+    value = value + 1
+  ENDPROCEDURE
+  PUBLIC FUNCTION getValue()
+    RETURN value
+  ENDFUNCTION
+ENDCLASS
+
+myCounter = NEW Counter(10)
+myCounter.addOne()
+myCounter.addOne()
+PRINT(STR(myCounter.getValue()))
