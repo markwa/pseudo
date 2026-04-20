@@ -111,6 +111,9 @@
                 <button class="btn btn-compact" @click="downloadSelectedVirtualFile" :disabled="!selectedVirtualFile">
                   <i class="bi bi-download" aria-hidden="true"></i><span>Download</span>
                 </button>
+                <button class="btn btn-compact" @click="clearVirtualFiles" :disabled="!virtualFiles.length">
+                  <i class="bi bi-trash3" aria-hidden="true"></i><span>Delete Files</span>
+                </button>
               </div>
             </div>
             <div class="filesystem-body">

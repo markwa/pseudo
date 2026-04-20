@@ -305,6 +305,7 @@ const app = Vue.createApp({
   },
   methods: {
     loadExample() {
+      this.clearVirtualFiles(false);
       this.editorText = this.examples[this.selectedExample].code;
       this.terminalStatus = `Loaded example: ${this.examples[this.selectedExample].name}`;
       this.appendLine("Loaded example: " + this.examples[this.selectedExample].name, "info");
@@ -488,6 +489,7 @@ const app = Vue.createApp({
       if (!file) {
         return;
       }
+      this.clearVirtualFiles(false);
       const text = await file.text();
       this.editorText = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
       this.terminalStatus = `Loaded program: ${file.name}`;
@@ -544,6 +546,15 @@ const app = Vue.createApp({
       this.virtualFiles = normalizeVirtualFiles(files);
       this.ensureVirtualFileSelection();
       this.persistState();
+    },
+    clearVirtualFiles(showMessage = true) {
+      this.virtualFiles = [];
+      this.selectedVirtualFilePath = "";
+      if (showMessage) {
+        this.terminalStatus = "Virtual filesystem cleared";
+        this.appendLine("Virtual filesystem cleared.", "info");
+        this.scrollTerminalToBottom();
+      }
     },
     serializeVirtualFiles() {
       return this.virtualFiles.map((file) => ({
