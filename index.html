@@ -17,7 +17,7 @@
       <div class="toolbar">
         <label class="select-wrap">
           <select v-model.number="selectedExample">
-            <option v-for="(example, idx) in examples" :key="example.name" :value="idx">{{ example.name }}</option>
+            <option v-for="(example, idx) in examples" :key="example.name" :value="idx" :disabled="example.separator">{{ example.name }}</option>
           </select>
           <i class="bi bi-chevron-down select-arrow" aria-hidden="true"></i>
         </label>

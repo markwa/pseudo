@@ -210,6 +210,58 @@ ENDCLASS
 
 g = NEW Greeter("Mia")
 PRINT(g.greet())`
+  },
+  {
+    name: "— Large examples —",
+    separator: true
+  },
+  {
+    name: "Battleship",
+    code: `// Find the hidden ship on a 3x3 grid.
+// You get three attempts to guess the row and column.
+ARRAY board[3, 3]
+FOR row = 0 TO 2
+  FOR col = 0 TO 2
+    board[row, col] = "."
+  NEXT col
+NEXT row
+
+shipRow = 1
+shipCol = 2
+turn = 0
+hit = FALSE
+
+WHILE turn < 3 AND NOT hit
+  rowGuess = INT(INPUT("Row? "))
+  colGuess = INT(INPUT("Col? "))
+  IF rowGuess < 0 OR rowGuess > 2 OR colGuess < 0 OR colGuess > 2 THEN
+    PRINT("Out of bounds")
+  ELSE
+    IF rowGuess == shipRow AND colGuess == shipCol THEN
+      board[rowGuess, colGuess] = "X"
+      PRINT("Hit!")
+      hit = TRUE
+    ELSE
+      board[rowGuess, colGuess] = "o"
+      PRINT("Miss")
+    ENDIF
+  ENDIF
+  turn = turn + 1
+ENDWHILE
+
+IF hit THEN
+  PRINT("You found the ship.")
+ELSE
+  PRINT("Game over.")
+ENDIF
+
+FOR row = 0 TO 2
+  line = ""
+  FOR col = 0 TO 2
+    line = line + board[row, col]
+  NEXT col
+  PRINT(line)
+NEXT row`
   }
 ];
 
@@ -305,7 +357,32 @@ const app = Vue.createApp({
     this.scrollTerminalToBottom();
   },
   methods: {
+    resolveSelectableExampleIndex(index) {
+      if (!this.examples.length) {
+        return 0;
+      }
+      let resolved = Math.max(0, Math.min(this.examples.length - 1, index));
+      if (!this.examples[resolved]?.separator) {
+        return resolved;
+      }
+      for (let offset = 1; offset < this.examples.length; offset += 1) {
+        const next = resolved + offset;
+        if (next < this.examples.length && !this.examples[next].separator) {
+          return next;
+        }
+        const prev = resolved - offset;
+        if (prev >= 0 && !this.examples[prev].separator) {
+          return prev;
+        }
+      }
+      return 0;
+    },
     loadExample() {
+      const resolvedExample = this.resolveSelectableExampleIndex(this.selectedExample);
+      if (resolvedExample !== this.selectedExample) {
+        this.selectedExample = resolvedExample;
+        return;
+      }
       this.clearVirtualFiles(false);
       this.editorText = this.examples[this.selectedExample].code;
       this.terminalStatus = `Loaded example: ${this.examples[this.selectedExample].name}`;
@@ -591,10 +668,10 @@ const app = Vue.createApp({
         if (typeof state.selectedExampleName === "string") {
           const byName = this.examples.findIndex((example) => example.name === state.selectedExampleName);
           if (byName >= 0) {
-            this.selectedExample = byName;
+            this.selectedExample = this.resolveSelectableExampleIndex(byName);
           }
         } else if (Number.isInteger(state.selectedExample)) {
-          this.selectedExample = Math.max(0, Math.min(this.examples.length - 1, state.selectedExample));
+          this.selectedExample = this.resolveSelectableExampleIndex(state.selectedExample);
         }
         if (typeof state.editorText === "string") {
           this.editorText = state.editorText;

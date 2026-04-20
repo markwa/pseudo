@@ -7,6 +7,57 @@ function loadTestcase(name) {
   return readFileSync(new URL(`./testcases/${name}.ocr`, import.meta.url), "utf8");
 }
 
+async function loadAppOptions() {
+  const previousVue = globalThis.Vue;
+  const captured = {};
+  const token = `${Date.now()}-${Math.random()}`;
+  globalThis.Vue = {
+    createApp(options) {
+      captured.options = options;
+      return {
+        mount() {}
+      };
+    }
+  };
+  try {
+    await import(new URL(`../app.js?test=${token}`, import.meta.url).href);
+  } finally {
+    globalThis.Vue = previousVue;
+  }
+  if (!captured.options) {
+    throw new Error("Failed to capture app options");
+  }
+  return captured.options;
+}
+
+function buildAppInstance(options, overrides = {}) {
+  const state = typeof options.data === "function" ? options.data.call({}) : {};
+  const instance = {
+    ...state,
+    ...overrides
+  };
+
+  instance.$refs = overrides.$refs || {};
+  instance.$nextTick = overrides.$nextTick || ((fn) => {
+    if (typeof fn === "function") {
+      fn();
+    }
+  });
+
+  for (const [name, getter] of Object.entries(options.computed || {})) {
+    Object.defineProperty(instance, name, {
+      enumerable: true,
+      get: () => getter.call(instance)
+    });
+  }
+
+  for (const [name, method] of Object.entries(options.methods || {})) {
+    instance[name] = method.bind(instance);
+  }
+
+  return instance;
+}
+
 const cases = [
   ["basics fixture translates and runs", async () => {
     const source = loadFixture("basics");
@@ -1022,6 +1073,63 @@ const cases = [
     assert.deepEqual(output, ["queen"]);
   }],
 
+  ["Battleship example mixes loops, 2D arrays, input, and win/lose flow", async () => {
+    const source = [
+      "// Find the hidden ship on a 3x3 grid.",
+      "// You get three attempts to guess the row and column.",
+      "ARRAY board[3, 3]",
+      "FOR row = 0 TO 2",
+      "  FOR col = 0 TO 2",
+      '    board[row, col] = "."',
+      "  NEXT col",
+      "NEXT row",
+      "",
+      "shipRow = 1",
+      "shipCol = 2",
+      "turn = 0",
+      "hit = FALSE",
+      "",
+      "WHILE turn < 3 AND NOT hit",
+      '  rowGuess = INT(INPUT("Row? "))',
+      '  colGuess = INT(INPUT("Col? "))',
+      "  IF rowGuess == shipRow AND colGuess == shipCol THEN",
+      '    board[rowGuess, colGuess] = "X"',
+      '    PRINT("Hit!")',
+      "    hit = TRUE",
+      "  ELSE",
+      "    IF rowGuess < 0 OR rowGuess > 2 OR colGuess < 0 OR colGuess > 2 THEN",
+      '      PRINT("Out of bounds")',
+      "    ELSE",
+      '      board[rowGuess, colGuess] = "o"',
+      '      PRINT("Miss")',
+      "    ENDIF",
+      "  ENDIF",
+      "  turn = turn + 1",
+      "ENDWHILE",
+      "",
+      "IF hit THEN",
+      '  PRINT("You found the ship.")',
+      "ELSE",
+      '  PRINT("Game over.")',
+      "ENDIF",
+      "",
+      "FOR row = 0 TO 2",
+      '  line = ""',
+      "  FOR col = 0 TO 2",
+      "    line = line + board[row, col]",
+      "  NEXT col",
+      "  PRINT(line)",
+      "NEXT row"
+    ].join("\n");
+    const { js, output } = await runSource(source, { inputs: ["3", "0", "1", "2"] });
+
+    assert.match(js, /Array\.from\(\{ length: 3 \}/);
+    assert.match(js, /while \(\(\(turn < 3\) && \(!\(hit\)\)\)\)/);
+    assert.match(js, /rowGuess < 0/);
+    assert.match(js, /colGuess > 2/);
+    assert.deepEqual(output, ["Out of bounds", "Hit!", "You found the ship.", "...", "..X", "..."]);
+  }],
+
   ["switch example chooses the matching case", async () => {
     const source = [
       "// SWITCH / CASE / DEFAULT choose from several fixed values.",
@@ -1410,6 +1518,25 @@ const cases = [
     assert.deepEqual(output, ["yes"]);
   }],
 
+  ["mixed precedence with calls, indexing, and member access stays correct", async () => {
+    const source = [
+      "FUNCTION twice(value)",
+      "  RETURN value + value",
+      "ENDFUNCTION",
+      "",
+      'words = ["abc", "xy"]',
+      "IF NOT FALSE AND twice(words[0].length) == 6 OR words[1].SUBSTRING(0, 1) == \"x\" THEN",
+      '  PRINT("ok")',
+      "ELSE",
+      '  PRINT("bad")',
+      "ENDIF"
+    ].join("\n");
+    const { js, output } = await runSource(source);
+
+    assert.match(js, /await twice\(words\[0\]\.length\) == 6/);
+    assert.deepEqual(output, ["ok"]);
+  }],
+
   ["empty files still work with ENDOFFILE", async () => {
     const source = [
       'myFile = OPENREAD("empty.txt")',
@@ -1425,6 +1552,552 @@ const cases = [
 
     assert.deepEqual(output, ["done"]);
     assert.deepEqual(files.get("empty.txt"), []);
+  }],
+
+  ["reading past EOF stays empty and EOF remains true", async () => {
+    const source = [
+      'myFile = OPENREAD("sample.txt")',
+      "PRINT(STR(myFile.ENDOFFILE()))",
+      "PRINT(myFile.READLINE())",
+      "PRINT(STR(myFile.ENDOFFILE()))",
+      "PRINT(myFile.READLINE())",
+      "PRINT(STR(myFile.ENDOFFILE()))",
+      "myFile.CLOSE()"
+    ].join("\n");
+    const { output } = await runSource(source, {
+      files: new Map([["sample.txt", []]])
+    });
+
+    assert.deepEqual(output, ["true", "", "true", "", "true"]);
+  }],
+
+  ["opening a missing file is safe and behaves like an empty reader", async () => {
+    const source = [
+      'myFile = OPENREAD("missing.txt")',
+      "PRINT(STR(myFile.ENDOFFILE()))",
+      "PRINT(myFile.READLINE())",
+      "myFile.CLOSE()"
+    ].join("\n");
+    const { output, files } = await runSource(source);
+
+    assert.deepEqual(output, ["true", ""]);
+    assert.deepEqual(files.get("missing.txt"), undefined);
+  }],
+
+  ["OCR string handling example returns length and substring", async () => {
+    const source = [
+      'someText = "Computer Science"',
+      "PRINT(STR(someText.LENGTH))",
+      "PRINT(someText.SUBSTRING(3, 3))"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["16", "put"]);
+  }],
+
+  ["OCR string handling guide example works with mixed-case method names", async () => {
+    const source = [
+      'someText = "Computer Science"',
+      "PRINT(STR(someText.length))",
+      "PRINT(someText.subString(3, 3))"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["16", "put"]);
+  }],
+
+  ["OCR guide string example prints length and substring with lowercase syntax", async () => {
+    const source = [
+      'someText = "Computer Science"',
+      "print(someText.length)",
+      "print(someText.subString(3, 3))"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["16", "put"]);
+  }],
+
+  ["OCR object orientation guide example can set and get a private field", async () => {
+    const source = [
+      "CLASS Player",
+      "  PRIVATE attempts",
+      "  PUBLIC PROCEDURE NEW()",
+      "    attempts = 3",
+      "  ENDPROCEDURE",
+      "  PUBLIC PROCEDURE setAttempts(number)",
+      "    attempts = number",
+      "  ENDPROCEDURE",
+      "  PRIVATE FUNCTION getAttempts()",
+      "    RETURN attempts",
+      "  ENDFUNCTION",
+      "ENDCLASS",
+      "",
+      "player = NEW Player()",
+      "player.setAttempts(5)",
+      "PRINT(STR(player.getAttempts()))"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["5"]);
+  }],
+
+  ["OCR guide constructor and inheritance example works with lowercase syntax", async () => {
+    const source = [
+      "class Pet",
+      "  private name",
+      "  public procedure new(givenName)",
+      "    name = givenName",
+      "  endprocedure",
+      "  public function getName()",
+      "    return name",
+      "  endfunction",
+      "endclass",
+      "",
+      "class Dog inherits Pet",
+      "  private breed",
+      "  public procedure new(givenName, givenBreed)",
+      "    super.new(givenName)",
+      "    breed = givenBreed",
+      "  endprocedure",
+      "  public function describe()",
+      '    return getName() + " - " + breed',
+      "  endfunction",
+      "endclass",
+      "",
+      'myDog = new Dog("Fido", "Scottish Terrier")',
+      "print(myDog.describe())"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["Fido - Scottish Terrier"]);
+  }],
+
+  ["OCR guide file-reading loop works with lowercase openRead/readLine/endOfFile", async () => {
+    const source = [
+      'myFile = openRead("sample.txt")',
+      "while NOT myFile.endOfFile()",
+      "  print(myFile.readLine())",
+      "endwhile",
+      "myFile.close()"
+    ].join("\n");
+    const { output } = await runSource(source, {
+      files: new Map([["sample.txt", ["alpha", "beta"]]])
+    });
+
+    assert.deepEqual(output, ["alpha", "beta"]);
+  }],
+
+  ["malformed class declaration without a superclass name is rejected", () => {
+    assert.throws(
+      () => translateSource("CLASS Dog INHERITS\nENDCLASS"),
+      (error) => error.message === "Invalid class declaration" && error.line === 1
+    );
+  }],
+
+  ["duplicate class members are rejected", () => {
+    assert.throws(
+      () => translateSource([
+        "CLASS A",
+        "  PUBLIC FUNCTION x()",
+        "    RETURN 1",
+        "  ENDFUNCTION",
+        "  PUBLIC FUNCTION x()",
+        "    RETURN 2",
+        "  ENDFUNCTION",
+        "ENDCLASS"
+      ].join("\n")),
+      (error) => /Duplicate class member declaration: x/.test(error.message) && error.line === 5
+    );
+
+    assert.throws(
+      () => translateSource([
+        "CLASS A",
+        "  PRIVATE x",
+        "  PRIVATE x",
+        "ENDCLASS"
+      ].join("\n")),
+      (error) => /Duplicate class member declaration: x/.test(error.message) && error.line === 3
+    );
+  }],
+
+  ["SUPER outside a class is rejected", () => {
+    assert.throws(
+      () => translateSource("SUPER.NEW()"),
+      (error) => /SUPER can only be used inside a class/.test(error.message)
+    );
+  }],
+
+  ["malformed DEFAULT branches are rejected", () => {
+    assert.throws(
+      () => translateSource([
+        "SWITCH choice:",
+        "  DEFAULT x",
+        "    PRINT(1)",
+        "ENDSWITCH"
+      ].join("\n")),
+      (error) => error.message === "Invalid default" && error.line === 2
+    );
+  }],
+
+  ["app persistence round-trips the selected lesson, editor text, toggles, and virtual files", async () => {
+    const options = await loadAppOptions();
+    const store = new Map();
+    const originalLocalStorage = globalThis.localStorage;
+    globalThis.localStorage = {
+      getItem(key) {
+        return store.has(key) ? store.get(key) : null;
+      },
+      setItem(key, value) {
+        store.set(key, String(value));
+      }
+    };
+
+    try {
+      const initial = buildAppInstance(options, {
+        editorText: 'PRINT("custom")',
+        selectedExample: 0,
+        showJs: true,
+        showVirtualFs: true,
+        virtualFiles: [
+          { path: "b.txt", lines: ["two"] },
+          { path: "a.txt", lines: ["one"] }
+        ],
+        selectedVirtualFilePath: "b.txt"
+      });
+      assert.equal(initial.examples[initial.examples.length - 1].name, "Battleship");
+      assert.equal(initial.examples[initial.examples.length - 2].separator, true);
+      initial.persistState();
+
+      const saved = JSON.parse(store.get("ocr-pseudocode-teaching-tool:v1"));
+      assert.equal(saved.editorText, 'PRINT("custom")');
+      assert.equal(saved.showJs, true);
+      assert.equal(saved.showVirtualFs, true);
+      assert.equal(saved.selectedVirtualFilePath, "b.txt");
+      assert.equal(saved.selectedExampleName, initial.examples[0].name);
+      assert.deepEqual(saved.virtualFiles, [
+        { path: "b.txt", lines: ["two"] },
+        { path: "a.txt", lines: ["one"] }
+      ]);
+
+      store.set("ocr-pseudocode-teaching-tool:v1", JSON.stringify({
+        editorText: 'PRINT("restored")',
+        selectedExample: 0,
+        selectedExampleName: "Files",
+        showJs: false,
+        showVirtualFs: true,
+        virtualFiles: [{ path: "notes.txt", lines: ["alpha"] }],
+        selectedVirtualFilePath: "notes.txt"
+      }));
+
+      const restored = buildAppInstance(options);
+      restored.restoreState();
+
+      assert.equal(restored.editorText, 'PRINT("restored")');
+      assert.equal(restored.showJs, false);
+      assert.equal(restored.showVirtualFs, true);
+      assert.equal(restored.virtualFiles.length, 1);
+      assert.equal(restored.virtualFiles[0].path, "notes.txt");
+      assert.equal(restored.selectedVirtualFilePath, "notes.txt");
+      assert.equal(restored.examples[restored.selectedExample].name, "Files");
+    } finally {
+      globalThis.localStorage = originalLocalStorage;
+    }
+  }],
+
+  ["app editor load, save, upload, download, and delete flows update state correctly", async () => {
+    const options = await loadAppOptions();
+    const downloads = [];
+    const blobs = [];
+    const originalBlob = globalThis.Blob;
+    const originalURL = globalThis.URL;
+    const originalDocument = globalThis.document;
+    const originalWindow = globalThis.window;
+    const originalLocalStorage = globalThis.localStorage;
+
+    globalThis.Blob = class {
+      constructor(parts, init) {
+        this.parts = parts;
+        this.type = init && init.type;
+        blobs.push(this);
+      }
+    };
+    globalThis.URL = {
+      createObjectURL() {
+        return "blob:mock";
+      },
+      revokeObjectURL() {}
+    };
+    globalThis.document = {
+      createElement(tag) {
+        assert.equal(tag, "a");
+        const anchor = {
+          href: "",
+          download: "",
+          rel: "",
+          click() {
+            downloads.push({ href: this.href, download: this.download });
+          }
+        };
+        return anchor;
+      }
+    };
+    globalThis.window = {
+      setTimeout(fn) {
+        fn();
+      }
+    };
+    globalThis.localStorage = {
+      getItem() {
+        return null;
+      },
+      setItem() {}
+    };
+
+    try {
+      const app = buildAppInstance(options, {
+        editorText: 'PRINT("before")',
+        virtualFiles: [{ path: "note.txt", lines: ["alpha"] }],
+        selectedVirtualFilePath: "note.txt",
+        $refs: {
+          editorLoadInput: { value: "" },
+          virtualFsUpload: { value: "" }
+        }
+      });
+
+      await app.handleEditorLoad({
+        target: {
+          value: "ignored",
+          files: [{
+            name: "lesson.ocr",
+            text: async () => 'PRINT("loaded")\r\nPRINT("again")'
+          }]
+        }
+      });
+      assert.equal(app.editorText, 'PRINT("loaded")\nPRINT("again")');
+      assert.deepEqual(app.virtualFiles, []);
+
+      app.saveEditorProgram();
+      assert.equal(blobs.length, 1);
+      assert.equal(blobs[0].parts.join(""), 'PRINT("loaded")\nPRINT("again")');
+      assert.equal(blobs[0].type, "text/plain;charset=utf-8");
+      assert.equal(downloads[0].download, "program.ocr");
+
+      await app.handleVirtualFsUpload({
+        target: {
+          value: "ignored",
+          files: [
+            {
+              name: "folder/a.txt",
+              webkitRelativePath: "folder/a.txt",
+              text: async () => "alpha\nbeta"
+            },
+            {
+              name: "plain.txt",
+              text: async () => "gamma"
+            }
+          ]
+        }
+      });
+
+      assert.equal(app.selectedVirtualFilePath, "folder/a.txt");
+      assert.deepEqual(app.virtualFiles, [
+        { path: "folder/a.txt", lines: ["alpha", "beta"] },
+        { path: "plain.txt", lines: ["gamma"] }
+      ]);
+
+      app.downloadSelectedVirtualFile();
+      assert.equal(downloads[1].download, "a.txt");
+
+      app.clearVirtualFiles(false);
+      assert.deepEqual(app.virtualFiles, []);
+      assert.equal(app.selectedVirtualFilePath, "");
+    } finally {
+      globalThis.Blob = originalBlob;
+      globalThis.URL = originalURL;
+      globalThis.document = originalDocument;
+      globalThis.window = originalWindow;
+      globalThis.localStorage = originalLocalStorage;
+    }
+  }],
+
+  ["missing terminators inside nested class bodies are still reported", () => {
+    assert.throws(
+      () => translateSource([
+        "CLASS Box",
+        "  PUBLIC PROCEDURE NEW()",
+        "    IF TRUE THEN",
+        '      PRINT("x")',
+        "    ENDIF",
+        "ENDCLASS"
+      ].join("\n")),
+      (error) => error.message === "Missing procedure terminator" && error.line === 2
+    );
+  }],
+
+  ["lesson changes and editor loads keep virtual files cleared and hide JS", () => {
+    const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+    const htmlSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+
+    assert.match(appSource, /loadExample\(\)\s*\{[\s\S]*?this\.clearVirtualFiles\(false\);/);
+    assert.match(appSource, /async handleEditorLoad\(event\)\s*\{[\s\S]*?this\.clearVirtualFiles\(false\);/);
+    assert.match(appSource, /selectedExample\(\)\s*\{[\s\S]*?this\.showJs = false;/);
+    assert.match(appSource, /persistState\(\)\s*\{[\s\S]*?selectedExampleName:/);
+    assert.match(appSource, /persistState\(\)\s*\{[\s\S]*?showJs:/);
+    assert.match(appSource, /restoreState\(\)\s*\{[\s\S]*?selectedExampleName/);
+    assert.match(htmlSource, /<span>Load<\/span>/);
+    assert.match(htmlSource, /<span>Save<\/span>/);
+    assert.match(htmlSource, /Delete Files/);
+    assert.match(htmlSource, /editorLoadInput/);
+  }],
+
+  ["OCR switch guide example selects the correct case", async () => {
+    const source = [
+      "entry = \"B\"",
+      "SWITCH entry:",
+      "  CASE \"A\":",
+      '    PRINT("You selected A")',
+      "  CASE \"B\":",
+      '    PRINT("You selected B")',
+      "  DEFAULT:",
+      '    PRINT("Unrecognised selection")',
+      "ENDSWITCH"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["You selected B"]);
+  }],
+
+  ["OCR-style word concatenation loop builds a string from an array", async () => {
+    const source = [
+      "words = [\"A\", \"B\", \"C\"]",
+      'contents = ""',
+      "count = 0",
+      "WHILE count < 3",
+      '  contents = contents + words[count] + " "',
+      "  count = count + 1",
+      "ENDWHILE",
+      "PRINT(contents)"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["A B C "]);
+  }],
+
+  ["recursive binary search style function finds an item in a sorted array", async () => {
+    const source = [
+      "FUNCTION search(values, value, low, high)",
+      "  IF low > high THEN",
+      "    RETURN -1",
+      "  ENDIF",
+      "  mid = (low + high) DIV 2",
+      "  IF values[mid] == value THEN",
+      "    RETURN mid",
+      "  ELSEIF values[mid] > value THEN",
+      "    RETURN search(values, value, low, mid - 1)",
+      "  ELSE",
+      "    RETURN search(values, value, mid + 1, high)",
+      "  ENDIF",
+      "ENDFUNCTION",
+      "",
+      "numbers = [3, 7, 12, 19, 25, 31]",
+      "PRINT(STR(search(numbers, 19, 0, 5)))"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["3"]);
+  }],
+
+  ["private and public methods can cooperate inside a class", async () => {
+    const source = [
+      "CLASS Player",
+      "  PRIVATE attempts",
+      "  PUBLIC PROCEDURE NEW()",
+      "    attempts = 3",
+      "  ENDPROCEDURE",
+      "  PUBLIC PROCEDURE setAttempts(number)",
+      "    attempts = number",
+      "  ENDPROCEDURE",
+      "  PRIVATE FUNCTION getAttempts()",
+      "    RETURN attempts",
+      "  ENDFUNCTION",
+      "  PUBLIC FUNCTION report()",
+      "    RETURN STR(getAttempts())",
+      "  ENDFUNCTION",
+      "ENDCLASS",
+      "",
+      "player = NEW Player()",
+      "player.setAttempts(5)",
+      "PRINT(player.report())"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["5"]);
+  }],
+
+  ["byVal and byRef parameters are accepted in an OCR-style subroutine", async () => {
+    const source = [
+      "PROCEDURE foobar(x:byVal, y:byRef)",
+      "  PRINT(STR(x + y))",
+      "ENDPROCEDURE",
+      "",
+      "foobar(3, 4)"
+    ].join("\n");
+    const { js, output } = await runSource(source);
+
+    assert.match(js, /async function foobar\(x, y\)/);
+    assert.deepEqual(output, ["7"]);
+  }],
+
+  ["openWrite overwrites an existing file", async () => {
+    const source = [
+      'myFile = OPENWRITE("log.txt")',
+      'myFile.WRITELINE("First version")',
+      "myFile.CLOSE()",
+      "",
+      'myFile = OPENWRITE("log.txt")',
+      'myFile.WRITELINE("Second version")',
+      "myFile.CLOSE()",
+      "",
+      'myFile = OPENREAD("log.txt")',
+      "PRINT(myFile.READLINE())",
+      "myFile.CLOSE()"
+    ].join("\n");
+    const { output, files } = await runSource(source);
+
+    assert.deepEqual(output, ["Second version"]);
+    assert.deepEqual(files.get("log.txt"), ["Second version"]);
+  }],
+
+  ["derived methods can call super methods", async () => {
+    const source = [
+      "CLASS Pet",
+      "  PRIVATE name",
+      "  PUBLIC PROCEDURE NEW(givenName)",
+      "    name = givenName",
+      "  ENDPROCEDURE",
+      "  PUBLIC FUNCTION getName()",
+      "    RETURN name",
+      "  ENDFUNCTION",
+      "ENDCLASS",
+      "",
+      "CLASS Dog INHERITS Pet",
+      "  PRIVATE breed",
+      "  PUBLIC PROCEDURE NEW(givenName, givenBreed)",
+      "    SUPER.NEW(givenName)",
+      "    breed = givenBreed",
+      "  ENDPROCEDURE",
+      "  PUBLIC FUNCTION describe()",
+      '    RETURN SUPER.getName() + " - " + breed',
+      "  ENDFUNCTION",
+      "ENDCLASS",
+      "",
+      'myDog = NEW Dog("Fido", "Terrier")',
+      "PRINT(myDog.describe())"
+    ].join("\n");
+    const { js, output } = await runSource(source);
+
+    assert.match(js, /super\.getName\(\)/);
+    assert.deepEqual(output, ["Fido - Terrier"]);
   }],
 
   ["Input_Until_Minus_One sample translates its loop and accumulator", () => {

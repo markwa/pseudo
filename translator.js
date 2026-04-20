@@ -251,10 +251,14 @@ function translateStatements(lines, startIndex, terminators, ctx) {
 
     try {
       const expr = parseExpression(stripped, { allowAwait: true, classContext });
+      validateSuperUsage(expr, classContext);
       emit(output, lineMap, originalLineNumber, `${emitExprNode(expr, ctx, { allowAwait: true, classContext })};`);
       i += 1;
       continue;
-    } catch {
+    } catch (error) {
+      if (error && error.message === "SUPER can only be used inside a class") {
+        throw error;
+      }
       // fall through
     }
 
@@ -349,6 +353,9 @@ function translateSwitch(lines, startIndex, ctx, openingLine) {
       continue;
     }
     if (/^default\b/i.test(line)) {
+      if (!/^default\s*:?\s*$/i.test(line)) {
+        throw syntaxError("Invalid default", lineNumber);
+      }
       if (openCase) {
         emit(output, lineMap, lineNumber, "break;");
       }
@@ -495,7 +502,12 @@ function parseClass(lines, startIndex, ctx) {
     }
     const methodMatch = current.match(/^(?:(public|private)\s+)?(function|procedure)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]*)\)\s*$/i);
     if (methodMatch) {
-      classCtx.methods.add(methodMatch[3].toLowerCase());
+      const methodName = methodMatch[3];
+      const methodKey = methodName.toLowerCase();
+      if (classCtx.methods.has(methodKey) || classCtx.fields.some((field) => field.toLowerCase() === methodKey)) {
+        throw syntaxError(`Duplicate class member declaration: ${methodName}`, i + 1);
+      }
+      classCtx.methods.add(methodKey);
       const isConstructor = methodMatch[2].toLowerCase() === "procedure" && methodMatch[3].toLowerCase() === "new";
       const parsedMethod = parseFunction(lines, i, ctx, true, {
         kind: isConstructor ? "constructor" : "method",
@@ -511,6 +523,10 @@ function parseClass(lines, startIndex, ctx) {
       const fieldName = current.replace(/^(?:public|private)\s+/i, "").split("=")[0].trim();
       if (["return", "if", "elseif", "else", "endif", "while", "endwhile", "for", "next", "switch", "case", "default", "endswitch", "do", "until", "function", "procedure", "class", "endclass", "global", "print"].includes(fieldName.toLowerCase())) {
         throw syntaxError(`Invalid class field declaration: ${current}`, i + 1);
+      }
+      const fieldKey = fieldName.toLowerCase();
+      if (classCtx.fields.some((field) => field.toLowerCase() === fieldKey) || classCtx.methods.has(fieldKey)) {
+        throw syntaxError(`Duplicate class member declaration: ${fieldName}`, i + 1);
       }
       classCtx.fields.push(fieldName);
       i += 1;
@@ -575,6 +591,7 @@ function translateAssignment(statement, ctx, classContext, allowGlobalPrefix) {
 
 function parseSimpleTarget(text, ctx, classContext) {
   const expr = parseExpression(text, { allowAwait: true, classContext, inTarget: true });
+  validateSuperUsage(expr, classContext);
   if (expr.type === "Identifier") {
     return { kind: "identifier", name: expr.name, code: expr.name };
   }
@@ -583,12 +600,49 @@ function parseSimpleTarget(text, ctx, classContext) {
 
 function emitStatementCall(line, ctx, classContext, allowAwait) {
   const expr = parseExpression(line, { allowAwait, classContext });
+  validateSuperUsage(expr, classContext);
   return `${emitExprNode(expr, ctx, { allowAwait, classContext })};`;
 }
 
 function emitExpression(text, ctx, allowAwait, classContext) {
   const expr = parseExpression(text, { allowAwait, classContext });
+  validateSuperUsage(expr, classContext);
   return emitExprNode(expr, ctx, { allowAwait, classContext });
+}
+
+function validateSuperUsage(node, classContext) {
+  if (classContext) {
+    return;
+  }
+  if (containsSuperUsage(node)) {
+    throw new Error("SUPER can only be used inside a class");
+  }
+}
+
+function containsSuperUsage(node) {
+  if (!node || typeof node !== "object") {
+    return false;
+  }
+  switch (node.type) {
+    case "Identifier":
+      return String(node.name).toLowerCase() === "super";
+    case "Call":
+      return containsSuperUsage(node.callee) || node.args.some((arg) => containsSuperUsage(arg));
+    case "Member":
+      return containsSuperUsage(node.object);
+    case "Index":
+      return containsSuperUsage(node.object) || node.indices.some((index) => containsSuperUsage(index));
+    case "Unary":
+      return containsSuperUsage(node.argument);
+    case "Binary":
+      return containsSuperUsage(node.left) || containsSuperUsage(node.right);
+    case "ArrayLiteral":
+      return node.elements.some((element) => containsSuperUsage(element));
+    case "New":
+      return node.args.some((arg) => containsSuperUsage(arg));
+    default:
+      return false;
+  }
 }
 
 function parseExpression(text, options = {}) {
@@ -911,11 +965,14 @@ function emitExprNode(node, ctx, options = {}) {
         if (lowerProperty === "close") {
           return `${allowAwait ? "await " : ""}${objectCode}.close(${args.join(", ")})`;
         }
-        if (node.callee.object.type === "Identifier" && node.callee.object.name.toLowerCase() === "super" && lowerProperty === "new") {
-          return `super(${args.join(", ")})`;
-        }
-        return `${allowAwait ? "await " : ""}${objectCode}.${property}(${args.join(", ")})`;
+      if (node.callee.object.type === "Identifier" && node.callee.object.name.toLowerCase() === "super" && lowerProperty === "new") {
+        return `super(${args.join(", ")})`;
       }
+      if (node.callee.object.type === "Identifier" && node.callee.object.name.toLowerCase() === "super") {
+        return `${allowAwait ? "await " : ""}super.${property}(${args.join(", ")})`;
+      }
+      return `${allowAwait ? "await " : ""}${objectCode}.${property}(${args.join(", ")})`;
+    }
       return `${allowAwait ? "await " : ""}${emitExprNode(node.callee, ctx, options)}(${node.args.map((arg) => emitExprNode(arg, ctx, options)).join(", ")})`;
     }
     case "Member":
