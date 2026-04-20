@@ -931,6 +931,174 @@ const cases = [
     assert.deepEqual(output, ["Ben", "5", "ell"]);
   }],
 
+  ["strings example manipulates text with length and substring", async () => {
+    const source = [
+      "// Manipulate text with concatenation, LENGTH, and SUBSTRING.",
+      'text = "HELLO WORLD"',
+      'PRINT(text + "!")',
+      "PRINT(STR(text.LENGTH))",
+      "PRINT(text.SUBSTRING(6, 5))"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["HELLO WORLD!", "11", "WORLD"]);
+  }],
+
+  ["boolean logic example combines AND, OR, and NOT", async () => {
+    const source = [
+      "// Combine AND, OR, and NOT inside one decision.",
+      "age = 16",
+      "hasPermission = TRUE",
+      "doorOpen = FALSE",
+      "IF (age >= 16 AND hasPermission) OR NOT doorOpen THEN",
+      '  PRINT("Allowed")',
+      "ELSE",
+      '  PRINT("Blocked")',
+      "ENDIF"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["Allowed"]);
+  }],
+
+  ["procedure example uses side effects and early return", async () => {
+    const source = [
+      "// Procedures are useful for side effects and early RETURN.",
+      "PROCEDURE announce(message)",
+      '  IF message == "" THEN',
+      "    RETURN",
+      "  ENDIF",
+      '  PRINT(">> " + message)',
+      "ENDPROCEDURE",
+      "",
+      'announce("Hello")',
+      'announce("")'
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, [">> Hello"]);
+  }],
+
+  ["recursion example counts down by calling itself", async () => {
+    const source = [
+      "// A function can call itself to count down.",
+      "FUNCTION countdown(n)",
+      "  IF n == 0 THEN",
+      "    RETURN",
+      "  ENDIF",
+      "  PRINT(STR(n))",
+      "  countdown(n - 1)",
+      "ENDFUNCTION",
+      "",
+      "countdown(3)"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["3", "2", "1"]);
+  }],
+
+  ["2D arrays example stores values by row and column", async () => {
+    const source = [
+      "// Use a two-dimensional array with row and column indexes.",
+      "ARRAY board[2, 2]",
+      'board[0, 0] = "rook"',
+      'board[0, 1] = "knight"',
+      'board[1, 0] = "bishop"',
+      'board[1, 1] = "queen"',
+      "PRINT(board[1, 1])"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["queen"]);
+  }],
+
+  ["switch example chooses the matching case", async () => {
+    const source = [
+      "// SWITCH / CASE / DEFAULT choose from several fixed values.",
+      "day = 3",
+      "SWITCH day",
+      "  CASE 1",
+      '    PRINT("Mon")',
+      "  CASE 2",
+      '    PRINT("Tue")',
+      "  CASE 3",
+      '    PRINT("Wed")',
+      "  DEFAULT",
+      '    PRINT("Other")',
+      "ENDSWITCH"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["Wed"]);
+  }],
+
+  ["inheritance example constructs a derived object", async () => {
+    const source = [
+      "// A class can inherit methods from a parent class.",
+      "CLASS Pet",
+      "  PRIVATE name",
+      "  PUBLIC PROCEDURE NEW(givenName)",
+      "    name = givenName",
+      "  ENDPROCEDURE",
+      "  PUBLIC FUNCTION getName()",
+      "    RETURN name",
+      "  ENDFUNCTION",
+      "ENDCLASS",
+      "",
+      "CLASS Dog INHERITS Pet",
+      "  PRIVATE breed",
+      "  PUBLIC PROCEDURE NEW(givenName, givenBreed)",
+      "    SUPER.NEW(givenName)",
+      "    breed = givenBreed",
+      "  ENDPROCEDURE",
+      "  PUBLIC FUNCTION describe()",
+      '    RETURN getName() + " - " + breed',
+      "  ENDFUNCTION",
+      "ENDCLASS",
+      "",
+      'myDog = NEW Dog("Fido", "Terrier")',
+      "PRINT(myDog.describe())"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["Fido - Terrier"]);
+  }],
+
+  ["global scope example updates a shared variable", async () => {
+    const source = [
+      "// Use GLOBAL to update a variable outside the procedure.",
+      "total = 0",
+      "",
+      "PROCEDURE addToTotal(amount)",
+      "  GLOBAL total = amount",
+      "ENDPROCEDURE",
+      "",
+      "addToTotal(7)",
+      "PRINT(STR(globalThis.total))"
+    ].join("\n");
+    const { js, output } = await runSource(source);
+
+    assert.match(js, /globalThis\.total = amount/);
+    assert.deepEqual(output, ["7"]);
+  }],
+
+  ["file loop example reads until ENDOFFILE is true", async () => {
+    const source = [
+      "// Read a file until ENDOFFILE is true.",
+      'myFile = OPENREAD("sample.txt")',
+      "WHILE NOT myFile.ENDOFFILE()",
+      "  PRINT(myFile.READLINE())",
+      "ENDWHILE",
+      "myFile.CLOSE()"
+    ].join("\n");
+    const { output, files } = await runSource(source, {
+      files: new Map([["sample.txt", ["alpha", "beta"]]])
+    });
+
+    assert.deepEqual(output, ["alpha", "beta"]);
+    assert.deepEqual(files.get("sample.txt"), ["alpha", "beta"]);
+  }],
+
   ["files example writes and reads a line", async () => {
     const source = [
       "// Write a file, then read it back line by line.",

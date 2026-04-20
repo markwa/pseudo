@@ -10,6 +10,14 @@ name = INPUT("Name? ")
 PRINT("Hello " + name)`
   },
   {
+    name: "Strings",
+    code: `// Manipulate text with concatenation, LENGTH, and SUBSTRING.
+text = "HELLO WORLD"
+PRINT(text + "!")
+PRINT(STR(text.LENGTH))
+PRINT(text.SUBSTRING(6, 5))`
+  },
+  {
     name: "Selection",
     code: `// Use IF / ELSEIF / ELSE to choose one branch.
 score = 72
@@ -20,6 +28,31 @@ ELSEIF score >= 50 THEN
 ELSE
   PRINT("Try again")
 ENDIF`
+  },
+  {
+    name: "Boolean logic",
+    code: `// Combine AND, OR, and NOT inside one decision.
+age = 16
+hasPermission = TRUE
+doorOpen = FALSE
+IF (age >= 16 AND hasPermission) OR NOT doorOpen THEN
+  PRINT("Allowed")
+ELSE
+  PRINT("Blocked")
+ENDIF`
+  },
+  {
+    name: "Procedures",
+    code: `// Procedures are useful for side effects and early RETURN.
+PROCEDURE announce(message)
+  IF message == "" THEN
+    RETURN
+  ENDIF
+  PRINT(">> " + message)
+ENDPROCEDURE
+
+announce("Hello")
+announce("")`
   },
   {
     name: "Counted loop",
@@ -49,17 +82,98 @@ UNTIL attempts == 3
 PRINT("Stopped")`
   },
   {
-    name: "Arrays",
-    code: `// Store values in an array and read string properties.
-ARRAY names[3]
-names[0] = "Ada"
-names[1] = "Ben"
-names[2] = "Cy"
-PRINT(names[1])
+    name: "Recursion",
+    code: `// A function can call itself to count down.
+FUNCTION countdown(n)
+  IF n == 0 THEN
+    RETURN
+  ENDIF
+  PRINT(STR(n))
+  countdown(n - 1)
+ENDFUNCTION
 
-text = "hello"
-PRINT(STR(text.LENGTH))
-PRINT(text.SUBSTRING(1, 3))`
+countdown(3)`
+  },
+  {
+    name: "2D arrays",
+    code: `// Use a two-dimensional array with row and column indexes.
+ARRAY board[2, 2]
+board[0, 0] = "rook"
+board[0, 1] = "knight"
+board[1, 0] = "bishop"
+board[1, 1] = "queen"
+PRINT(board[1, 1])`
+  },
+  {
+    name: "Casting",
+    code: `// Convert strings into numbers with INT and FLOAT.
+whole = INT("7")
+decimal = FLOAT("3.5")
+PRINT(STR(whole + 1))
+PRINT(STR(decimal + 0.5))`
+  },
+  {
+    name: "Switch",
+    code: `// SWITCH / CASE / DEFAULT choose from several fixed values.
+day = 3
+SWITCH day
+  CASE 1
+    PRINT("Mon")
+  CASE 2
+    PRINT("Tue")
+  CASE 3
+    PRINT("Wed")
+  DEFAULT
+    PRINT("Other")
+ENDSWITCH`
+  },
+  {
+    name: "Inheritance",
+    code: `// A class can inherit methods from a parent class.
+CLASS Pet
+  PRIVATE name
+  PUBLIC PROCEDURE NEW(givenName)
+    name = givenName
+  ENDPROCEDURE
+  PUBLIC FUNCTION getName()
+    RETURN name
+  ENDFUNCTION
+ENDCLASS
+
+CLASS Dog INHERITS Pet
+  PRIVATE breed
+  PUBLIC PROCEDURE NEW(givenName, givenBreed)
+    SUPER.NEW(givenName)
+    breed = givenBreed
+  ENDPROCEDURE
+  PUBLIC FUNCTION describe()
+    RETURN getName() + " - " + breed
+  ENDFUNCTION
+ENDCLASS
+
+myDog = NEW Dog("Fido", "Terrier")
+PRINT(myDog.describe())`
+  },
+  {
+    name: "Global scope",
+    code: `// Use GLOBAL to update a variable outside the procedure.
+total = 0
+
+PROCEDURE addToTotal(amount)
+  GLOBAL total = amount
+ENDPROCEDURE
+
+addToTotal(7)
+PRINT(STR(globalThis.total))`
+  },
+  {
+    name: "File loop",
+    code: `// Read a file until ENDOFFILE is true.
+myFile = OPENREAD("sample.txt")
+WHILE NOT myFile.ENDOFFILE()
+  PRINT(myFile.READLINE())
+ENDWHILE
+myFile.CLOSE()`
   },
   {
     name: "Files",
@@ -71,14 +185,6 @@ myFile.CLOSE()
 myFile = OPENREAD("sample.txt")
 PRINT(myFile.READLINE())
 myFile.CLOSE()`
-  },
-  {
-    name: "Casting",
-    code: `// Convert strings into numbers with INT and FLOAT.
-whole = INT("7")
-decimal = FLOAT("3.5")
-PRINT(STR(whole + 1))
-PRINT(STR(decimal + 0.5))`
   },
   {
     name: "Functions",
@@ -150,7 +256,8 @@ const app = Vue.createApp({
       pendingPromptResolver: null,
       virtualFiles: [],
       selectedVirtualFilePath: "",
-      editorRevision: 0
+      editorRevision: 0,
+      restoringState: false
     };
   },
   computed: {
@@ -179,6 +286,9 @@ const app = Vue.createApp({
       this.persistState();
     },
     selectedExample() {
+      if (this.restoringState) {
+        return;
+      }
       this.loadExample();
       this.persistState();
     },
@@ -451,6 +561,7 @@ const app = Vue.createApp({
       const payload = {
         editorText: this.editorText,
         selectedExample: this.selectedExample,
+        selectedExampleName: this.examples[this.selectedExample]?.name || "",
         showJs: this.showJs,
         showVirtualFs: this.showVirtualFs,
         virtualFiles: this.serializeVirtualFiles(),
@@ -460,16 +571,23 @@ const app = Vue.createApp({
     },
     restoreState() {
       try {
+        this.restoringState = true;
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) {
+          this.restoringState = false;
           return;
         }
         const state = JSON.parse(raw);
+        if (typeof state.selectedExampleName === "string") {
+          const byName = this.examples.findIndex((example) => example.name === state.selectedExampleName);
+          if (byName >= 0) {
+            this.selectedExample = byName;
+          }
+        } else if (Number.isInteger(state.selectedExample)) {
+          this.selectedExample = Math.max(0, Math.min(this.examples.length - 1, state.selectedExample));
+        }
         if (typeof state.editorText === "string") {
           this.editorText = state.editorText;
-        }
-        if (Number.isInteger(state.selectedExample)) {
-          this.selectedExample = Math.max(0, Math.min(this.examples.length - 1, state.selectedExample));
         }
         if (typeof state.showJs === "boolean") {
           this.showJs = state.showJs;
@@ -486,6 +604,8 @@ const app = Vue.createApp({
         this.ensureVirtualFileSelection();
       } catch {
         // Ignore corrupt saved state.
+      } finally {
+        this.restoringState = false;
       }
     }
   }
