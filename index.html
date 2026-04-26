@@ -161,14 +161,18 @@
               <input type="checkbox" v-model="expandTraceArrays">
               <span>Expand arrays</span>
             </label>
-            <p class="trace-summary">{{ traceRows.length }} step{{ traceRows.length === 1 ? '' : 's' }}</p>
+            <label class="trace-toggle">
+              <input type="checkbox" v-model="compressTraceTable">
+              <span>Compress</span>
+            </label>
+            <p class="trace-summary">{{ traceSummaryText }}</p>
           </div>
         </div>
         <div class="trace-table-wrap">
           <table class="trace-table">
             <thead>
               <tr>
-                <th rowspan="2">Line</th>
+                <th v-if="!compressTraceTable" rowspan="2">Line</th>
                 <th
                   v-for="group in traceHeaderGroups"
                   :key="group.key"
@@ -182,14 +186,14 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in traceRows" :key="row.step">
-                <td>{{ formatTraceLine(row) }}</td>
+              <tr v-for="row in traceVisibleRows" :key="row.key || row.step">
+                <td v-if="!compressTraceTable">{{ formatTraceLine(row) }}</td>
                 <td v-for="column in traceDisplayColumns" :key="column.key">
                   <span class="trace-cell-content">{{ formatTraceCell(row, column) }}</span>
                 </td>
               </tr>
-              <tr v-if="!traceRows.length">
-                <td class="trace-empty" :colspan="1 + traceDisplayColumns.length">Run a program and step through it to build the trace table.</td>
+              <tr v-if="!traceVisibleRows.length">
+                <td class="trace-empty" :colspan="traceEmptyColspan">Run a program and step through it to build the trace table.</td>
               </tr>
             </tbody>
           </table>

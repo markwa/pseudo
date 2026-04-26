@@ -1528,6 +1528,109 @@ const cases = [
     assert.equal(app.formatTraceCell(app.traceRows[1], "total"), "");
   }],
 
+  ["trace table compresses changes into rows until a value changes again", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options, {
+      compressTraceTable: true,
+      editorText: [
+        "a = 1",
+        "b = 2",
+        "a = 3"
+      ].join("\n")
+    });
+    const snapshots = [
+      { a: 1 },
+      { a: 1, b: 2 },
+      { a: 3, b: 2 }
+    ];
+
+    snapshots.forEach((snapshot, index) => {
+      app.handleTraceStep({
+        pseudoLine: index + 1,
+        snapshot,
+        stepIndex: index + 1,
+        paused: false
+      });
+    });
+
+    assert.equal(app.traceRows.length, 3);
+    assert.equal(app.traceVisibleRows.length, 2);
+    assert.equal(app.formatTraceCell(app.traceVisibleRows[0], "a"), "1");
+    assert.equal(app.formatTraceCell(app.traceVisibleRows[0], "b"), "2");
+    assert.equal(app.formatTraceCell(app.traceVisibleRows[1], "a"), "3");
+    assert.equal(app.formatTraceCell(app.traceVisibleRows[1], "b"), "");
+  }],
+
+  ["trace table compression starts a new row after loop ends", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options, {
+      compressTraceTable: true,
+      editorText: [
+        "a = 1",
+        "WHILE a < 3",
+        "  b = 1",
+        "ENDWHILE",
+        "c = 3"
+      ].join("\n")
+    });
+    const snapshots = [
+      { a: 1 },
+      { a: 1 },
+      { a: 1, b: 1 },
+      { a: 1, b: 1 },
+      { a: 1, b: 1, c: 3 }
+    ];
+
+    snapshots.forEach((snapshot, index) => {
+      app.handleTraceStep({
+        pseudoLine: index + 1,
+        snapshot,
+        stepIndex: index + 1,
+        paused: false
+      });
+    });
+
+    assert.equal(app.traceRows.length, 3);
+    assert.equal(app.traceEvents.length, 5);
+    assert.equal(app.traceVisibleRows.length, 2);
+    assert.equal(app.formatTraceCell(app.traceVisibleRows[0], "a"), "1");
+    assert.equal(app.formatTraceCell(app.traceVisibleRows[0], "b"), "1");
+    assert.equal(app.formatTraceCell(app.traceVisibleRows[1], "a"), "");
+    assert.equal(app.formatTraceCell(app.traceVisibleRows[1], "b"), "");
+    assert.equal(app.formatTraceCell(app.traceVisibleRows[1], "c"), "3");
+  }],
+
+  ["trace table compression starts a new row after array initialisation", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options, {
+      compressTraceTable: true,
+      editorText: [
+        "ARRAY values[3] = [1, 2, 3]",
+        "count = 3"
+      ].join("\n")
+    });
+    const snapshots = [
+      { values: [1, 2, 3] },
+      { values: [1, 2, 3], count: 3 }
+    ];
+
+    snapshots.forEach((snapshot, index) => {
+      app.handleTraceStep({
+        pseudoLine: index + 1,
+        snapshot,
+        stepIndex: index + 1,
+        paused: false
+      });
+    });
+
+    assert.equal(app.traceRows.length, 2);
+    assert.equal(app.traceVisibleRows.length, 2);
+    assert.equal(app.formatTraceCell(app.traceVisibleRows[0], "values"), "[1,2,3]");
+    assert.equal(app.formatTraceCell(app.traceVisibleRows[0], "count"), "");
+    assert.equal(app.formatTraceCell(app.traceVisibleRows[1], "values"), "");
+    assert.equal(app.formatTraceCell(app.traceVisibleRows[1], "count"), "3");
+  }],
+
   ["trace serialization excludes virtual file handles", () => {
     const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 
@@ -1558,6 +1661,7 @@ const cases = [
     const options = await loadAppOptions();
     const app = buildAppInstance(options, {
       outputLines: [{ kind: "output", text: "old output" }],
+      traceEvents: [{ step: 1, line: 2, snapshot: { x: 1 } }],
       traceRows: [{ step: 1, line: 2, snapshot: { x: 1 } }],
       traceColumns: ["x"],
       lastTraceSnapshot: { x: 1 },
@@ -1569,6 +1673,7 @@ const cases = [
     app.stopProgram();
 
     assert.deepEqual(app.outputLines, []);
+    assert.deepEqual(app.traceEvents, []);
     assert.deepEqual(app.traceRows, []);
     assert.deepEqual(app.traceColumns, []);
     assert.equal(app.lastTraceSnapshot, null);
@@ -1590,6 +1695,7 @@ const cases = [
     const app = buildAppInstance(options, {
       selectedExample: 1,
       outputLines: [{ kind: "output", text: "old output" }],
+      traceEvents: [{ step: 1, line: 2, snapshot: { x: 1 } }],
       traceRows: [{ step: 1, line: 2, snapshot: { x: 1 } }],
       traceColumns: ["x"],
       lastTraceSnapshot: { x: 1 },
@@ -1612,6 +1718,7 @@ const cases = [
       assert.equal(app.running, false);
       assert.equal(app.debugPaused, false);
       assert.deepEqual(app.outputLines, []);
+      assert.deepEqual(app.traceEvents, []);
       assert.deepEqual(app.traceRows, []);
       assert.deepEqual(app.traceColumns, []);
       assert.equal(app.currentPseudoLine, 0);
@@ -2338,6 +2445,7 @@ const cases = [
         showJs: true,
         showVirtualFs: true,
         expandTraceArrays: true,
+        compressTraceTable: true,
         virtualFiles: [
           { path: "b.txt", lines: ["two"] },
           { path: "a.txt", lines: ["one"] }
@@ -2367,6 +2475,7 @@ const cases = [
       assert.equal(saved.showJs, true);
       assert.equal(saved.showVirtualFs, true);
       assert.equal(saved.expandTraceArrays, true);
+      assert.equal(saved.compressTraceTable, true);
       assert.equal(saved.selectedVirtualFilePath, "b.txt");
       assert.equal(saved.selectedExampleName, initial.examples[0].name);
       assert.deepEqual(saved.virtualFiles, [
@@ -2381,6 +2490,7 @@ const cases = [
         showJs: false,
         showVirtualFs: true,
         expandTraceArrays: true,
+        compressTraceTable: true,
         virtualFiles: [{ path: "notes.txt", lines: ["alpha"] }],
         selectedVirtualFilePath: "notes.txt"
       }));
@@ -2392,6 +2502,7 @@ const cases = [
       assert.equal(restored.showJs, false);
       assert.equal(restored.showVirtualFs, true);
       assert.equal(restored.expandTraceArrays, true);
+      assert.equal(restored.compressTraceTable, true);
       assert.equal(restored.virtualFiles.length, 1);
       assert.equal(restored.virtualFiles[0].path, "notes.txt");
       assert.equal(restored.selectedVirtualFilePath, "notes.txt");

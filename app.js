@@ -560,6 +560,8 @@ const app = Vue.createApp({
       running: false,
       debugPaused: false,
       currentPseudoLine: 0,
+      compressTraceTable: false,
+      traceEvents: [],
       traceRows: [],
       traceColumns: [],
       lastTraceSnapshot: null,
@@ -604,6 +606,17 @@ const app = Vue.createApp({
     },
     traceHeaderGroups() {
       return this.buildTraceHeaderGroups();
+    },
+    traceVisibleRows() {
+      return this.compressTraceTable ? this.buildCompressedTraceRows() : this.traceRows;
+    },
+    traceEmptyColspan() {
+      return (this.compressTraceTable ? 0 : 1) + this.traceDisplayColumns.length;
+    },
+    traceSummaryText() {
+      const count = this.traceVisibleRows.length;
+      const label = this.compressTraceTable ? "row" : "step";
+      return `${count} ${label}${count === 1 ? "" : "s"}`;
     }
   },
   watch: {
@@ -642,6 +655,9 @@ const app = Vue.createApp({
       this.persistState();
     },
     expandTraceArrays() {
+      this.persistState();
+    },
+    compressTraceTable() {
       this.persistState();
     }
   },
@@ -809,6 +825,7 @@ const app = Vue.createApp({
       this.debugPaused = false;
       this.currentPseudoLine = 0;
       this.traceRows = [];
+      this.traceEvents = [];
       this.traceColumns = [];
       this.lastTraceSnapshot = null;
     },
@@ -917,6 +934,7 @@ const app = Vue.createApp({
         changes: this.buildTraceChanges(previousSnapshot, snapshot)
       };
       this.lastTraceSnapshot = snapshot;
+      this.traceEvents.push(row);
       if (this.traceRowHasVisibleChange(row)) {
         this.traceRows.push(row);
       }
@@ -945,7 +963,8 @@ const app = Vue.createApp({
           expanded: false
         }));
       }
-      const snapshots = this.traceRows.map((row) => row.snapshot).filter(Boolean);
+      const sourceRows = this.traceEvents.length ? this.traceEvents : this.traceRows;
+      const snapshots = sourceRows.map((row) => row.snapshot).filter(Boolean);
       if (this.lastTraceSnapshot) {
         snapshots.push(this.lastTraceSnapshot);
       }
@@ -1033,6 +1052,52 @@ const app = Vue.createApp({
       }
       return paths;
     },
+    buildCompressedTraceRows() {
+      const rows = [];
+      const events = this.traceEvents.length ? this.traceEvents : this.traceRows;
+      let currentRow = null;
+      for (const event of events) {
+        const cells = {};
+        for (const column of this.traceDisplayColumns) {
+          const value = this.formatTraceCell(event, column);
+          if (value !== "") {
+            cells[column.key] = value;
+          }
+        }
+        const changedKeys = Object.keys(cells);
+        const endsTraceGroup = this.isTraceGroupBoundaryLine(event.line);
+        if (!changedKeys.length) {
+          if (endsTraceGroup) {
+            currentRow = null;
+          }
+          continue;
+        }
+        const repeatsChangedValue = currentRow && changedKeys.some((key) => Object.prototype.hasOwnProperty.call(currentRow.cells, key));
+        if (!currentRow || repeatsChangedValue) {
+          currentRow = {
+            key: `compressed-${rows.length + 1}-${event.step}`,
+            step: event.step,
+            line: event.line,
+            compressed: true,
+            cells: {}
+          };
+          rows.push(currentRow);
+        }
+        Object.assign(currentRow.cells, cells);
+        if (endsTraceGroup) {
+          currentRow = null;
+        }
+      }
+      return rows;
+    },
+    isTraceGroupBoundaryLine(lineNumber) {
+      if (!Number.isInteger(lineNumber) || lineNumber <= 0) {
+        return false;
+      }
+      const sourceLine = this.editorText.split(/\r?\n/)[lineNumber - 1] || "";
+      const code = sourceLine.replace(/\/\/.*$/, "").trim();
+      return /^(ENDWHILE|NEXT|UNTIL)\b/i.test(code) || /^ARRAY\s+[A-Za-z][A-Za-z0-9_]*\s*\[[^\]]+\]\s*=/i.test(code);
+    },
     extractInitialTraceColumns(jsCode) {
       const hiddenVariables = new Set();
       const handlePattern = /(?:var\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*await\s+__runtime\.open(?:Read|Write)\(/g;
@@ -1058,6 +1123,10 @@ const app = Vue.createApp({
       return Array.from(columns).sort((left, right) => left.localeCompare(right));
     },
     formatTraceCell(row, column) {
+      if (row && row.compressed) {
+        const key = column && typeof column === "object" ? column.key : column;
+        return row.cells && Object.prototype.hasOwnProperty.call(row.cells, key) ? row.cells[key] : "";
+      }
       if (column && typeof column === "object") {
         if (column.expanded) {
           return this.formatExpandedTraceCell(row, column);
@@ -1437,6 +1506,7 @@ const app = Vue.createApp({
         showVirtualFs: this.showVirtualFs,
         showTraceTable: this.showTraceTable,
         expandTraceArrays: this.expandTraceArrays,
+        compressTraceTable: this.compressTraceTable,
         virtualFiles: this.serializeVirtualFiles(),
         selectedVirtualFilePath: this.selectedVirtualFilePath
       };
@@ -1473,6 +1543,9 @@ const app = Vue.createApp({
         }
         if (typeof state.expandTraceArrays === "boolean") {
           this.expandTraceArrays = state.expandTraceArrays;
+        }
+        if (typeof state.compressTraceTable === "boolean") {
+          this.compressTraceTable = state.compressTraceTable;
         }
         if (Array.isArray(state.virtualFiles)) {
           this.virtualFiles = normalizeVirtualFiles(state.virtualFiles);
