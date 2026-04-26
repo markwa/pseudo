@@ -773,6 +773,7 @@ const app = Vue.createApp({
       this.stopProgram(false);
       this.outputLines = [];
       this.resetDebugState();
+      this.applyTraceOptionDirectives(this.editorText);
       this.terminalStatus = "Translating";
       this.scrollTerminalToBottom();
 
@@ -821,6 +822,31 @@ const app = Vue.createApp({
     },
     async runProgram() {
       await this.startProgram({ startPaused: false });
+    },
+    applyTraceOptionDirectives(sourceText) {
+      const directives = this.parseTraceOptionDirectives(sourceText);
+      if (typeof directives.expandTraceArrays === "boolean") {
+        this.expandTraceArrays = directives.expandTraceArrays;
+      }
+      if (typeof directives.compressTraceTable === "boolean") {
+        this.compressTraceTable = directives.compressTraceTable;
+      }
+    },
+    parseTraceOptionDirectives(sourceText) {
+      const directives = {};
+      for (const line of String(sourceText || "").split(/\r?\n/)) {
+        const match = line.match(/\/\/\s*#(expand_arrays|compress_rows)\s*:\s*(true|false)\b/i);
+        if (!match) {
+          continue;
+        }
+        const enabled = match[2].toLowerCase() === "true";
+        if (match[1].toLowerCase() === "expand_arrays") {
+          directives.expandTraceArrays = enabled;
+        } else if (match[1].toLowerCase() === "compress_rows") {
+          directives.compressTraceTable = enabled;
+        }
+      }
+      return directives;
     },
     stopProgram(showMessage = true) {
       if (this.worker) {

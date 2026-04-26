@@ -1661,6 +1661,47 @@ const cases = [
     assert.equal(app.formatTraceCell(app.traceVisibleRows[1], "count"), "3");
   }],
 
+  ["trace table directives in comments update display options", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options, {
+      expandTraceArrays: false,
+      compressTraceTable: false
+    });
+
+    assert.deepEqual(
+      app.parseTraceOptionDirectives([
+        "// #expand_arrays:true",
+        "total = 0 // #compress_rows:true"
+      ].join("\n")),
+      {
+        expandTraceArrays: true,
+        compressTraceTable: true
+      }
+    );
+
+    app.applyTraceOptionDirectives([
+      "// #expand_arrays:true",
+      "// #compress_rows:true"
+    ].join("\n"));
+
+    assert.equal(app.expandTraceArrays, true);
+    assert.equal(app.compressTraceTable, true);
+
+    app.applyTraceOptionDirectives([
+      "// #expand_arrays:false",
+      "// #compress_rows:false"
+    ].join("\n"));
+
+    assert.equal(app.expandTraceArrays, false);
+    assert.equal(app.compressTraceTable, false);
+  }],
+
+  ["program start applies trace table directives before translating", () => {
+    const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+    assert.match(appSource, /resetDebugState\(\);\s*this\.applyTraceOptionDirectives\(this\.editorText\);\s*this\.terminalStatus = "Translating";/);
+  }],
+
   ["trace serialization excludes virtual file handles", () => {
     const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
 
