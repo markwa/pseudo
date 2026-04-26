@@ -227,17 +227,21 @@ function translateStatements(lines, startIndex, terminators, ctx) {
     }
 
     if (/^array\b/i.test(stripped) || /^Array\b/i.test(stripped)) {
-      const match = stripped.match(/^(?:array|Array)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[([^\]]+)\]$/i);
+      const match = stripped.match(/^(?:array|Array)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\[([^\]]+)\](?:\s*=\s*(.+))?$/i);
       if (!match) {
         throw syntaxError("Invalid array declaration", originalLineNumber);
       }
-      const [, name, dims] = match;
+      const [, name, dims, initializer] = match;
       const parts = dims.split(",").map((part) => part.trim()).filter(Boolean);
       let js;
       if (parts.length === 1) {
-        js = `var ${name} = new Array(${emitExpression(parts[0], ctx, true, classContext, originalLineNumber)});`;
+        js = initializer
+          ? `var ${name} = ${emitExpression(initializer, ctx, true, classContext, originalLineNumber)};`
+          : `var ${name} = new Array(${emitExpression(parts[0], ctx, true, classContext, originalLineNumber)});`;
       } else if (parts.length === 2) {
-        js = `var ${name} = Array.from({ length: ${emitExpression(parts[0], ctx, true, classContext, originalLineNumber)} }, () => new Array(${emitExpression(parts[1], ctx, true, classContext, originalLineNumber)}));`;
+        js = initializer
+          ? `var ${name} = ${emitExpression(initializer, ctx, true, classContext, originalLineNumber)};`
+          : `var ${name} = Array.from({ length: ${emitExpression(parts[0], ctx, true, classContext, originalLineNumber)} }, () => new Array(${emitExpression(parts[1], ctx, true, classContext, originalLineNumber)}));`;
       } else {
         throw syntaxError("Only one- and two-dimensional arrays are supported", originalLineNumber);
       }

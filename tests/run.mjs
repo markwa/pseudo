@@ -180,6 +180,46 @@ const cases = [
       (error) => error.message === "Only one- and two-dimensional arrays are supported" && error.line === 1
     );
   }],
+  ["one-dimensional array declarations can include an initializer", async () => {
+    const source = [
+      "ARRAY data[5] = [10, 2, 3, 20, 19]",
+      "PRINT(STR(data[0]))",
+      "PRINT(STR(data[4]))"
+    ].join("\n");
+    const { js, output } = await runSource(source);
+
+    assert.match(js, /var data = \[10, 2, 3, 20, 19\]; __runtime\.trackVar\("data", data\);/);
+    assert.deepEqual(output, ["10", "19"]);
+  }],
+  ["array initializers support strings", async () => {
+    const source = [
+      'ARRAY names[2] = ["Ada", "Bo"]',
+      "PRINT(names[1])"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["Bo"]);
+  }],
+  ["two-dimensional array declarations can include an initializer", async () => {
+    const source = [
+      "ARRAY board[2, 2] = [[1, 2], [3, 4]]",
+      "PRINT(STR(board[0, 1]))",
+      "PRINT(STR(board[1, 0]))"
+    ].join("\n");
+    const { js, output } = await runSource(source);
+
+    assert.match(js, /var board = \[\[1, 2\], \[3, 4\]\]; __runtime\.trackVar\("board", board\);/);
+    assert.deepEqual(output, ["2", "3"]);
+  }],
+  ["two-dimensional array initializers support strings", async () => {
+    const source = [
+      'ARRAY board[2, 2] = [["a", "b"], ["c", "d"]]',
+      "PRINT(board[1, 1])"
+    ].join("\n");
+    const { output } = await runSource(source);
+
+    assert.deepEqual(output, ["d"]);
+  }],
   ["unrecognized statements are rejected", () => {
     assert.throws(
       () => translateSource("gibberish token"),
