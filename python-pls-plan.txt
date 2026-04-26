@@ -1,0 +1,32 @@
+Edexcel GCSE Python PLS coverage tracker
+
+Implemented:
+- for item in sequence:
+- range(start, stop, step)
+- exponentiation **
+- built-ins: bool, list, chr, ord, round
+- round(x, n)
+- list operations: append, insert, del items[index]
+- augmented assignment: +=, -=, *=, /=, //=, %=
+- string repetition with *
+- string methods: find, index, isalpha, isalnum, isdigit, replace, split, strip, upper, lower, isupper, islower, format
+- extended string helper arguments: strip(char), find(substring, start, end), index(substring, start, end)
+- format descriptors: alignment, width, precision, numeric/string type formatting
+- PLS-style file opening: open(path, mode)
+- file methods: readline, readlines, write, writelines, close
+- iteration over files with for line in file:
+- negative single indexes for strings and lists
+
+Notes:
+- Existing custom openRead/openWrite compatibility remains
+- Existing class/inheritance support remains as a non-PLS extension
+
+Still to add for Edexcel example-program compatibility:
+- import statements
+  - chosen behavior implemented: math, random, and time are supported
+  - any other import stops translation with a clear "Library import is not supported: <name>" message
+- module member usage tied to imports
+  - implemented: math.ceil, math.floor, math.sqrt, math.pi
+  - implemented: random.randint, random.random
+  - implemented: time.sleep
+  - still unsupported: turtle module syntax

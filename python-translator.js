@@ -7,11 +7,14 @@ import {
 
 const METHOD_NAME_MAP = new Map([
   ["readline", "readLine"],
+  ["readlines", "readLines"],
+  ["write", "write"],
   ["writeline", "writeLine"],
+  ["writelines", "writeLines"],
   ["endoffile", "endOfFile"]
 ]);
 
-const BUILTIN_CALLS = new Set(["str", "int", "float", "len", "openread", "openwrite", "input"]);
+const BUILTIN_CALLS = new Set(["str", "int", "float", "len", "openread", "openwrite", "open", "input", "bool", "list", "chr", "ord", "round"]);
 
 export function translatePythonProgram(source) {
   const parser = new PythonTranslator(source);
@@ -27,6 +30,8 @@ class PythonTranslator {
     this.topLevelNames = new Set();
     this.functionNames = new Set();
     this.classMethodNames = new Map();
+    this.tempCounter = 0;
+    this.imports = new Set();
   }
 
   translate() {
@@ -155,6 +160,11 @@ class PythonTranslator {
       return;
     }
 
+    if (/^import\b/.test(line.code)) {
+      this.translateImport(state);
+      return;
+    }
+
     if (/^global\b/.test(line.code)) {
       const globalMatch = line.code.match(/^global\s+(.+)$/);
       if (!globalMatch) {
@@ -194,6 +204,16 @@ class PythonTranslator {
       );
       emit(output, lineMap, line.number, `await __runtime.print(${args[0] || '""'});`);
       state.index += 1;
+      return;
+    }
+
+    if (/^del\b/.test(line.code)) {
+      this.translateDelete(state, ctx, output, lineMap);
+      return;
+    }
+
+    if (/^[A-Za-z_][A-Za-z0-9_]*(?:\s*\[[^\]]+\]|\.[A-Za-z_][A-Za-z0-9_]*)*\s*(\+=|-=|\*=|\/=|\/\/=|%=)\s*/.test(line.code)) {
+      this.translateAugmentedAssignment(state, ctx, output, lineMap);
       return;
     }
 
@@ -265,37 +285,53 @@ class PythonTranslator {
 
   translateFor(state, ctx, output, lineMap) {
     const line = this.lines[state.index];
-    const match = line.code.match(/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+range\s*\((.*)\)\s*:\s*$/);
-    if (!match) {
+    const rangeMatch = line.code.match(/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+range\s*\((.*)\)\s*:\s*$/);
+    const iterableMatch = line.code.match(/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+(.+)\s*:\s*$/);
+    if (rangeMatch) {
+      this.translateRangeFor(state, ctx, output, lineMap, rangeMatch);
+      return;
+    }
+    if (!iterableMatch) {
       throw syntaxError("Invalid for loop", line.number);
     }
+    const [, variable, iterableSource] = iterableMatch;
+    const isGlobal = scopeHasGlobal(ctx, variable);
+    const needsDeclaration = !isGlobal && !currentScope(ctx).declared.has(variable);
+    declareVariable(variable, ctx, { lineNumber: line.number, asGlobal: isGlobal });
+    const iterableCode = this.emitExpression(iterableSource, ctx, { lineNumber: line.number });
+    const tempId = this.nextTemp("iter");
+    const sequenceVar = `__pySeq_${tempId}`;
+    const indexVar = `__pyIdx_${tempId}`;
+    const variableRef = variableReference(variable, ctx);
+
+    emit(output, lineMap, line.number, `var ${sequenceVar} = await __runtime.toIterableArray(${iterableCode});`);
+    emit(output, lineMap, line.number, `for (var ${indexVar} = 0; ${indexVar} < ${sequenceVar}.length; ${indexVar} += 1) {`);
+    emit(output, lineMap, line.number, `${needsDeclaration ? "var " : ""}${variableRef} = ${sequenceVar}[${indexVar}]; ${buildTrackVarExpression(variable, variableRef)};`);
+    state.index += 1;
+    const childIndent = this.requireChildIndent(state.index - 1, line.indent, "for", line.number);
+    this.translateNestedBlock(state, childIndent, ctx, output, lineMap);
+    emit(output, lineMap, line.number, "}");
+  }
+
+  translateRangeFor(state, ctx, output, lineMap, match) {
+    const line = this.lines[state.index];
     const variable = match[1];
     const rangeArgs = splitTopLevel(match[2], ",").map((arg) => arg.trim()).filter(Boolean);
     let startExpr;
     let endExpr;
-    let comparator;
     let stepExpr;
     if (rangeArgs.length === 1) {
       startExpr = "0";
       endExpr = rangeArgs[0];
-      comparator = "<";
       stepExpr = "1";
     } else if (rangeArgs.length === 2) {
       startExpr = rangeArgs[0];
       endExpr = rangeArgs[1];
-      comparator = "<";
       stepExpr = "1";
     } else if (rangeArgs.length === 3) {
       startExpr = rangeArgs[0];
       endExpr = rangeArgs[1];
       stepExpr = rangeArgs[2];
-      if (stepExpr === "-1") {
-        comparator = ">";
-      } else if (stepExpr === "1") {
-        comparator = "<";
-      } else {
-        throw syntaxError("Only range steps of 1 or -1 are supported", line.number);
-      }
     } else {
       throw syntaxError("Invalid range() call", line.number);
     }
@@ -307,13 +343,15 @@ class PythonTranslator {
     const endCode = this.emitExpression(endExpr, ctx, { lineNumber: line.number });
     const stepCode = this.emitExpression(stepExpr, ctx, { lineNumber: line.number });
     const variableRef = variableReference(variable, ctx);
+    const stepVar = `__pyStep_${this.nextTemp("step")}`;
 
+    emit(output, lineMap, line.number, `var ${stepVar} = ${stepCode};`);
     emit(output, lineMap, line.number, `${needsDeclaration ? "var " : ""}${variableRef} = ${startCode}; ${buildTrackVarExpression(variable, variableRef)};`);
     emit(
       output,
       lineMap,
       line.number,
-      `for (; ${variableRef} ${comparator} ${endCode}; ${variableRef} += ${stepCode}, ${buildTrackVarExpression(variable, variableRef)}) {`
+      `for (; (${stepVar} >= 0 ? ${variableRef} < ${endCode} : ${variableRef} > ${endCode}); ${variableRef} += ${stepVar}, ${buildTrackVarExpression(variable, variableRef)}) {`
     );
     state.index += 1;
     const childIndent = this.requireChildIndent(state.index - 1, line.indent, "for", line.number);
@@ -453,6 +491,58 @@ class PythonTranslator {
     state.index += 1;
   }
 
+  translateDelete(state, ctx, output, lineMap) {
+    const line = this.lines[state.index];
+    const match = line.code.match(/^del\s+(.+)\[(.+)\]\s*$/);
+    if (!match) {
+      throw syntaxError("Invalid del statement", line.number);
+    }
+    const targetExpr = this.emitExpression(match[1].trim(), ctx, { allowConstructorCalls: false, lineNumber: line.number });
+    const indexExpr = this.emitExpression(match[2].trim(), ctx, { lineNumber: line.number });
+    emit(output, lineMap, line.number, `${targetExpr}.splice(${indexExpr}, 1);`);
+    state.index += 1;
+  }
+
+  translateAugmentedAssignment(state, ctx, output, lineMap) {
+    const line = this.lines[state.index];
+    const match = line.code.match(/^(.+?)\s*(\+=|-=|\*=|\/=|\/\/=|%=)\s*(.+)$/);
+    if (!match) {
+      throw syntaxError("Invalid augmented assignment", line.number);
+    }
+    const [, targetSource, operator, exprSource] = match;
+    const target = targetSource.trim();
+    const rhs = this.emitExpression(exprSource.trim(), ctx, { lineNumber: line.number });
+    const targetExpr = this.emitExpression(target, ctx, { allowConstructorCalls: false, lineNumber: line.number });
+
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(target)) {
+      const isGlobal = scopeHasGlobal(ctx, target);
+      const needsDeclaration = !isGlobal && !currentScope(ctx).declared.has(target);
+      declareVariable(target, ctx, { lineNumber: line.number, asGlobal: isGlobal });
+      const reference = variableReference(target, ctx);
+      const updated = buildAugmentedExpression(reference, operator, rhs);
+      emit(output, lineMap, line.number, `${needsDeclaration ? "var " : ""}${reference} = ${updated}; ${buildTrackVarExpression(target, reference)};`);
+      state.index += 1;
+      return;
+    }
+
+    emit(output, lineMap, line.number, `${targetExpr} = ${buildAugmentedExpression(targetExpr, operator, rhs)};`);
+    state.index += 1;
+  }
+
+  translateImport(state) {
+    const line = this.lines[state.index];
+    const match = line.code.match(/^import\s+([A-Za-z_][A-Za-z0-9_]*)\s*$/);
+    if (!match) {
+      throw syntaxError("Invalid import statement", line.number);
+    }
+    const library = match[1];
+    if (!["math", "random", "time"].includes(library)) {
+      throw syntaxError(`Library import is not supported: ${library}`, line.number);
+    }
+    this.imports.add(library);
+    state.index += 1;
+  }
+
   emitExpression(source, ctx, options = {}) {
     const tokens = tokenizeExpression(source, options.lineNumber);
     const parser = new ExpressionParser(tokens, this, ctx, options);
@@ -484,6 +574,11 @@ class PythonTranslator {
       throw syntaxError(`Expected an indented block after ${label} statement`, lineNumber);
     }
     return childIndent;
+  }
+
+  nextTemp(prefix) {
+    this.tempCounter += 1;
+    return `${prefix}${this.tempCounter}`;
   }
 }
 
@@ -521,19 +616,95 @@ class ExpressionParser {
   }
 
   parseExpression(stopValues = new Set()) {
-    const parts = [];
-    while (!this.isAtEnd()) {
+    return this.parseOr(stopValues);
+  }
+
+  atStop(stopValues) {
+    const token = this.peek();
+    return !!(token && token.type === "punct" && stopValues.has(token.value));
+  }
+
+  parseOr(stopValues) {
+    let expr = this.parseAnd(stopValues);
+    while (!this.isAtEnd() && !this.atStop(stopValues) && this.match("keyword", "or")) {
+      expr = `(${expr} || ${this.parseAnd(stopValues)})`;
+    }
+    return expr;
+  }
+
+  parseAnd(stopValues) {
+    let expr = this.parseComparison(stopValues);
+    while (!this.isAtEnd() && !this.atStop(stopValues) && this.match("keyword", "and")) {
+      expr = `(${expr} && ${this.parseComparison(stopValues)})`;
+    }
+    return expr;
+  }
+
+  parseComparison(stopValues) {
+    let expr = this.parseAdditive(stopValues);
+    while (!this.isAtEnd() && !this.atStop(stopValues)) {
       const token = this.peek();
-      if (token.type === "punct" && stopValues.has(token.value)) {
+      if (!token || token.type !== "operator" || !["==", "!=", "<", "<=", ">", ">="].includes(token.value)) {
         break;
       }
-      if (token.type === "operator" || token.type === "keyword") {
-        parts.push(this.emitOperator(this.consume()));
-        continue;
-      }
-      parts.push(this.parseAtom());
+      this.consume();
+      expr = `(${expr} ${token.value} ${this.parseAdditive(stopValues)})`;
     }
-    return parts.join(" ").replace(/\s+([,\)\]])/g, "$1").replace(/([\(\[])\s+/g, "$1").trim();
+    return expr;
+  }
+
+  parseAdditive(stopValues) {
+    let expr = this.parseMultiplicative(stopValues);
+    while (!this.isAtEnd() && !this.atStop(stopValues)) {
+      const token = this.peek();
+      if (!token || token.type !== "operator" || !["+", "-"].includes(token.value)) {
+        break;
+      }
+      this.consume();
+      expr = `(${expr} ${token.value} ${this.parseMultiplicative(stopValues)})`;
+    }
+    return expr;
+  }
+
+  parseMultiplicative(stopValues) {
+    let expr = this.parseUnary(stopValues);
+    while (!this.isAtEnd() && !this.atStop(stopValues)) {
+      const token = this.peek();
+      if (!token || token.type !== "operator" || !["*", "/", "//", "%"].includes(token.value)) {
+        break;
+      }
+      this.consume();
+      const right = this.parseUnary(stopValues);
+      if (token.value === "*") {
+        expr = `__runtime.pyMul(${expr}, ${right})`;
+      } else if (token.value === "//") {
+        expr = `Math.trunc(${expr} / ${right})`;
+      } else {
+        expr = `(${expr} ${token.value} ${right})`;
+      }
+    }
+    return expr;
+  }
+
+  parseUnary(stopValues) {
+    if (this.atStop(stopValues)) {
+      throw syntaxError("Invalid expression", this.options.lineNumber || 1);
+    }
+    if (this.match("keyword", "not")) {
+      return `(!${this.parseUnary(stopValues)})`;
+    }
+    if (this.match("operator", "-")) {
+      return `(-${this.parseUnary(stopValues)})`;
+    }
+    return this.parsePower(stopValues);
+  }
+
+  parsePower(stopValues) {
+    let expr = this.parseAtom();
+    while (!this.isAtEnd() && !this.atStop(stopValues) && this.match("operator", "**")) {
+      expr = `(${expr} ** ${this.parseUnary(stopValues)})`;
+    }
+    return expr;
   }
 
   parseAtom() {
@@ -578,11 +749,6 @@ class ExpressionParser {
       }
       return this.parsePostfix(`[${items.join(", ")}]`, null);
     }
-
-    if (token.type === "operator" && token.value === "-") {
-      return `(-${this.parseAtom()})`;
-    }
-
     throw syntaxError("Invalid expression", token.line);
   }
 
@@ -639,7 +805,9 @@ class ExpressionParser {
           const end = segments[1] || `${expr}.length`;
           expr = `${expr}.slice(${start}, ${end})`;
         } else {
-          expr = `${expr}[${segments.join("][")}]`;
+          expr = segments.some((segment) => /^(\(\s*)?-\s*\d+(\s*\))?$/.test(String(segment).trim()))
+            ? `${expr}.at(${segments.join(").at(")})`
+            : `${expr}[${segments.join("][")}]`;
         }
         nameHint = null;
         continue;
@@ -682,35 +850,33 @@ class ExpressionParser {
     if (name === "super") {
       return "super";
     }
+    if (name === "math") {
+      if (!this.translator.imports.has("math")) {
+        throw syntaxError("math is not available without import math", this.options.lineNumber || 1);
+      }
+      return "Math";
+    }
+    if (name === "random") {
+      if (!this.translator.imports.has("random")) {
+        throw syntaxError("random is not available without import random", this.options.lineNumber || 1);
+      }
+      return "__pythonRandom";
+    }
+    if (name === "time") {
+      if (!this.translator.imports.has("time")) {
+        throw syntaxError("time is not available without import time", this.options.lineNumber || 1);
+      }
+      return "__pythonTime";
+    }
     if (scopeHasGlobal(this.ctx, name) || (!isDeclaredLocally(this.ctx, name) && this.translator.topLevelNames.has(name) && currentScope(this.ctx) !== this.ctx.scopeStack[0])) {
       return name;
     }
     return name;
   }
 
-  emitOperator(token) {
-    if (token.type === "keyword") {
-      if (token.value === "and") {
-        return "&&";
-      }
-      if (token.value === "or") {
-        return "||";
-      }
-      if (token.value === "not") {
-        return "!";
-      }
-    }
-    if (token.value === "//") {
-      return "/";
-    }
-    if (token.value === "%") {
-      return "%";
-    }
-    return token.value;
-  }
-
   emitCall(expr, nameHint, args) {
     const callName = String(nameHint || "").toLowerCase();
+    const receiver = nameHint && expr.endsWith(`.${nameHint}`) ? expr.slice(0, -(nameHint.length + 1)) : null;
     if (callName === "str") {
       return `String(${args[0] || '""'})`;
     }
@@ -723,8 +889,26 @@ class ExpressionParser {
     if (callName === "len") {
       return `(${args[0] || "[]"}).length`;
     }
+    if (callName === "bool") {
+      return `Boolean(${args[0] || "false"})`;
+    }
+    if (callName === "list") {
+      return args.length ? `Array.from(${args[0]})` : "[]";
+    }
+    if (callName === "chr") {
+      return `String.fromCharCode(${args[0] || "0"})`;
+    }
+    if (callName === "ord") {
+      return `String(${args[0] || '""'}).charCodeAt(0)`;
+    }
+    if (callName === "round") {
+      return `__runtime.pyRound(${args[0] || "0"}${args[1] ? `, ${args[1]}` : ""})`;
+    }
     if (callName === "input") {
       return `await __runtime.input(${args[0] || '""'})`;
+    }
+    if (callName === "open") {
+      return `await __runtime.open(${args[0] || '""'}, ${args[1] || '"r"'})`;
     }
     if (callName === "openread") {
       return `await __runtime.openRead(${args[0] || '""'})`;
@@ -750,6 +934,60 @@ class ExpressionParser {
     if (nameHint && this.translator.functionNames.has(nameHint)) {
       return `await ${nameHint}(${args.join(", ")})`;
     }
+    if (receiver && callName === "append") {
+      return `(__runtime.pyAppend(${receiver}, ${args[0] || "undefined"}), undefined)`;
+    }
+    if (receiver && callName === "insert") {
+      return `(__runtime.pyInsert(${receiver}, ${args[0] || "0"}, ${args[1] || "undefined"}), undefined)`;
+    }
+    if (receiver && callName === "find") {
+      return `__runtime.pyFind(${receiver}, ${args[0] || '""'}${args[1] ? `, ${args[1]}` : ""}${args[2] ? `, ${args[2]}` : ""})`;
+    }
+    if (receiver && callName === "index") {
+      return `__runtime.pyIndex(${receiver}, ${args[0] || '""'}${args[1] ? `, ${args[1]}` : ""}${args[2] ? `, ${args[2]}` : ""})`;
+    }
+    if (receiver && callName === "isalpha") {
+      return `__runtime.pyIsAlpha(${receiver})`;
+    }
+    if (receiver && callName === "isalnum") {
+      return `__runtime.pyIsAlnum(${receiver})`;
+    }
+    if (receiver && callName === "isdigit") {
+      return `__runtime.pyIsDigit(${receiver})`;
+    }
+    if (receiver && callName === "replace") {
+      return `__runtime.pyReplace(${receiver}, ${args[0] || '""'}, ${args[1] || '""'}${args[2] ? `, ${args[2]}` : ""})`;
+    }
+    if (receiver && callName === "split") {
+      return `${receiver}.split(${args[0] || '""'})`;
+    }
+    if (receiver && callName === "strip") {
+      return `__runtime.pyStrip(${receiver}${args[0] ? `, ${args[0]}` : ""})`;
+    }
+    if (receiver && callName === "upper") {
+      return `${receiver}.toUpperCase()`;
+    }
+    if (receiver && callName === "lower") {
+      return `${receiver}.toLowerCase()`;
+    }
+    if (receiver && callName === "isupper") {
+      return `__runtime.pyIsUpper(${receiver})`;
+    }
+    if (receiver && callName === "islower") {
+      return `__runtime.pyIsLower(${receiver})`;
+    }
+    if (receiver && callName === "format") {
+      return `__runtime.pyFormat(${receiver}, [${args.join(", ")}])`;
+    }
+    if (receiver === "__pythonRandom" && callName === "randint") {
+      return `__runtime.randomInt(${args[0] || "0"}, ${args[1] || "0"})`;
+    }
+    if (receiver === "__pythonRandom" && callName === "random") {
+      return "__runtime.random()";
+    }
+    if (receiver === "__pythonTime" && callName === "sleep") {
+      return `await __runtime.sleep(${args[0] || "0"})`;
+    }
     if (BUILTIN_CALLS.has(callName)) {
       return `${expr}(${args.join(", ")})`;
     }
@@ -772,6 +1010,28 @@ function parseLine(raw, number) {
     code,
     isBlank: !code
   };
+}
+
+function buildAugmentedExpression(targetExpr, operator, rhsExpr) {
+  if (operator === "+=") {
+    return `(${targetExpr} + ${rhsExpr})`;
+  }
+  if (operator === "-=") {
+    return `(${targetExpr} - ${rhsExpr})`;
+  }
+  if (operator === "*=") {
+    return `__runtime.pyMul(${targetExpr}, ${rhsExpr})`;
+  }
+  if (operator === "/=") {
+    return `(${targetExpr} / ${rhsExpr})`;
+  }
+  if (operator === "//=") {
+    return `Math.trunc(${targetExpr} / ${rhsExpr})`;
+  }
+  if (operator === "%=") {
+    return `(${targetExpr} % ${rhsExpr})`;
+  }
+  return rhsExpr;
 }
 
 function stripPythonComment(line) {
@@ -860,7 +1120,17 @@ function tokenizeExpression(source, lineNumber = 1) {
       while (cursor < text.length) {
         const next = text[cursor];
         if (escaped) {
-          value += next;
+          if (next === "n") {
+            value += "\n";
+          } else if (next === "r") {
+            value += "\r";
+          } else if (next === "t") {
+            value += "\t";
+          } else if (next === "\\" || next === '"' || next === "'") {
+            value += next;
+          } else {
+            value += next;
+          }
           escaped = false;
         } else if (next === "\\") {
           escaped = true;
@@ -879,7 +1149,7 @@ function tokenizeExpression(source, lineNumber = 1) {
       continue;
     }
     const twoChar = text.slice(index, index + 2);
-    if (["==", "!=", "<=", ">=", "//"].includes(twoChar)) {
+    if (["==", "!=", "<=", ">=", "//", "**"].includes(twoChar)) {
       tokens.push({ type: "operator", value: twoChar, line: lineNumber });
       index += 2;
       continue;
@@ -917,7 +1187,20 @@ function tokenizeExpression(source, lineNumber = 1) {
 }
 
 function mapMemberName(name) {
-  return METHOD_NAME_MAP.get(String(name || "").toLowerCase()) || name;
+  const normalized = String(name || "").toLowerCase();
+  if (normalized === "ceil") {
+    return "ceil";
+  }
+  if (normalized === "floor") {
+    return "floor";
+  }
+  if (normalized === "sqrt") {
+    return "sqrt";
+  }
+  if (normalized === "pi") {
+    return "PI";
+  }
+  return METHOD_NAME_MAP.get(normalized) || name;
 }
 
 function extractCallInner(source, lineNumber) {

@@ -116,7 +116,7 @@ const cases = [
     const { js, output, lineMap } = await runSource(source, { inputs: ["Mark"] }, { language: "python" });
 
     assert.match(js, /await __runtime\.input\("Enter your name: "\)/);
-    assert.match(js, /var score = 5 \+ 6; __runtime\.trackVar\("score", score\);/);
+    assert.match(js, /var score = \(\s*5 \+ 6\s*\); __runtime\.trackVar\("score", score\);/);
     assert.deepEqual(output, ["Hello Mark", "Score is 11", "big"]);
     assert.ok(lineMap.length > 0);
   }],
@@ -150,8 +150,8 @@ const cases = [
     ].join("\n");
     const { js, output } = await runSource(source, {}, { language: "python" });
 
-    assert.match(js, /for \(; i < 4; i \+= 1, __runtime\.trackVar\("i", i\)\)/);
-    assert.match(js, /if \(total == 6 && ! false\)/);
+    assert.match(js, /for \(; \(__pyStep_[^)]* >= 0 \? i < 4 : i > 4\); i \+= __pyStep_[^,]+, __runtime\.trackVar\("i", i\)\)/);
+    assert.match(js, /if \(\(\(total == 6\) && \(!false\)\)\)/);
     assert.deepEqual(output, ["c", "6"]);
   }],
   ["python syntax errors report source lines", () => {
@@ -170,6 +170,202 @@ const cases = [
 
     assert.deepEqual(output, ["alpha", "beta"]);
     assert.deepEqual(files.get("sample.txt"), ["alpha", "beta"]);
+  }],
+  ["python for-in over lists, strings, and files executes", async () => {
+    const source = [
+      'items = ["A", "B"]',
+      "for item in items:",
+      "    print(item)",
+      'for ch in "Hi":',
+      "    print(ch)",
+      'reader = open("sample.txt", "r")',
+      "for line in reader:",
+      "    print(line)"
+    ].join("\n");
+    const { output } = await runSource(source, {
+      files: new Map([["sample.txt", ["one", "two"]]])
+    }, { language: "python" });
+
+    assert.deepEqual(output, ["A", "B", "H", "i", "one", "two"]);
+  }],
+  ["python range step and exponentiation execute", async () => {
+    const source = [
+      "for n in range(6, 0, -2):",
+      "    print(str(n))",
+      "print(str(2 ** 3))"
+    ].join("\n");
+    const { js, output } = await runSource(source, {}, { language: "python" });
+
+    assert.match(js, /__pyStep_/);
+    assert.match(js, /\*\*/);
+    assert.deepEqual(output, ["6", "4", "2", "8"]);
+  }],
+  ["python builtins bool list chr ord round execute", async () => {
+    const source = [
+      'print(str(bool("x")))',
+      'letters = list("ab")',
+      "print(letters[1])",
+      "print(chr(65))",
+      'print(str(ord("A")))',
+      "print(str(round(2.6)))"
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["true", "b", "A", "65", "3"]);
+  }],
+  ["python import math and Edexcel math members execute", async () => {
+    const source = [
+      "import math",
+      "print(str(math.ceil(2.1)))",
+      "print(str(math.floor(2.9)))",
+      "print(str(math.sqrt(81)))",
+      "print(str(math.pi))"
+    ].join("\n");
+    const { js, output } = await runSource(source, {}, { language: "python" });
+
+    assert.match(js, /Math\.ceil\(2\.1\)/);
+    assert.match(js, /Math\.floor\(2\.9\)/);
+    assert.match(js, /Math\.sqrt\(81\)/);
+    assert.match(js, /Math\.PI/);
+    assert.deepEqual(output, ["3", "2", "9", String(Math.PI)]);
+  }],
+  ["python import random and time PLS methods execute", async () => {
+    const source = [
+      "import random",
+      "import time",
+      "print(str(random.randint(1, 6)))",
+      "print(str(random.random()))",
+      "time.sleep(0.5)",
+      'print("done")'
+    ].join("\n");
+    let slept = null;
+    const { js, output } = await runSource(
+      source,
+      {
+        random: () => 0.25,
+        sleep: async (seconds) => {
+          slept = seconds;
+        }
+      },
+      { language: "python" }
+    );
+
+    assert.match(js, /__runtime\.randomInt\(1, 6\)/);
+    assert.match(js, /__runtime\.random\(\)/);
+    assert.match(js, /await __runtime\.sleep\(0\.5\)/);
+    assert.equal(slept, 0.5);
+    assert.deepEqual(output, ["2", "0.25", "done"]);
+  }],
+  ["python augmented assignment and string repetition execute", async () => {
+    const source = [
+      "count = 2",
+      "count += 3",
+      'line = "=" * 5',
+      'line *= 2',
+      "print(str(count))",
+      "print(line)"
+    ].join("\n");
+    const { js, output } = await runSource(source, {}, { language: "python" });
+
+    assert.match(js, /count = \(\s*count \+ 3\s*\);/);
+    assert.match(js, /__runtime\.pyMul\("=", 5\)/);
+    assert.deepEqual(output, ["5", "=========="]);
+  }],
+  ["python round digits, strip char, bounded find/index, and format descriptors execute", async () => {
+    const source = [
+      "print(str(round(3.14159, 2)))",
+      'print("--hi--".strip("-"))',
+      'print(str("banana".find("an", 2, 5)))',
+      'print(str("banana".index("an", 2, 5)))',
+      'layout = "{:>6} {:^5d} {:7.2f}"',
+      'print(layout.format("A", 12, 3.14159))'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["3.14", "hi", "3", "3", "     A  12      3.14"]);
+  }],
+  ["python rejects unsupported library imports with a clear error", () => {
+    assert.throws(
+      () => translateSource("import turtle", { language: "python" }),
+      (error) => error.message === "Library import is not supported: turtle" && error.line === 1
+    );
+  }],
+  ["python random and time require matching imports", () => {
+    assert.throws(
+      () => translateSource("print(random.randint(1, 6))", { language: "python" }),
+      (error) => error.message === "random is not available without import random" && error.line === 1
+    );
+    assert.throws(
+      () => translateSource("time.sleep(1)", { language: "python" }),
+      (error) => error.message === "time is not available without import time" && error.line === 1
+    );
+  }],
+  ["python list mutations and del execute", async () => {
+    const source = [
+      "items = [1, 3]",
+      "items.insert(1, 2)",
+      "items.append(4)",
+      "del items[0]",
+      "for item in items:",
+      "    print(str(item))"
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["2", "3", "4"]);
+  }],
+  ["python negative single indexes work for strings and lists", async () => {
+    const source = [
+      'text = "HELLO"',
+      'items = ["a", "b", "c"]',
+      "print(text[-1])",
+      "print(text[-2])",
+      "print(items[-1])",
+      "print(items[-3])"
+    ].join("\n");
+    const { js, output } = await runSource(source, {}, { language: "python" });
+
+    assert.match(js, /\.at\(\(-\s*1\)\)/);
+    assert.deepEqual(output, ["O", "L", "c", "a"]);
+  }],
+  ["python string methods and format execute", async () => {
+    const source = [
+      'text = "  Abc123  "',
+      "print(str(text.strip().find(\"bc\")))",
+      "print(str(text.strip().index(\"Ab\")))",
+      "print(str(text.strip().isalpha()))",
+      'print(str("Abc123".isalnum()))',
+      'print(str("123".isdigit()))',
+      'print("hello".replace("l", "x"))',
+      'parts = "a,b".split(",")',
+      "print(parts[1])",
+      'print("Ab".upper())',
+      'print("Ab".lower())',
+      'print(str("ABC".isupper()))',
+      'print(str("abc".islower()))',
+      'print("Hi {}, {}".format("Ada", 3))'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["1", "0", "false", "true", "true", "hexxo", "b", "AB", "ab", "true", "true", "Hi Ada, 3"]);
+  }],
+  ["python open append write readlines and writelines execute", async () => {
+    const source = [
+      'writer = open("log.txt", "w")',
+      'writer.write("a")',
+      'writer.writelines(["b", "\\n", "c"])',
+      "writer.close()",
+      'appender = open("log.txt", "a")',
+      'appender.write("d")',
+      "appender.close()",
+      'reader = open("log.txt", "r")',
+      "lines = reader.readlines()",
+      "print(lines[0])",
+      "reader.close()"
+    ].join("\n");
+    const { output, files } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["ab"]);
+    assert.deepEqual(files.get("log.txt"), ["ab", "cd"]);
   }],
   ["comments and curly quotes normalize", () => {
     const source = `// leading comment\nprint(“hello”) // trailing comment`;
