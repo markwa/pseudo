@@ -1462,6 +1462,36 @@ const cases = [
     );
   }],
 
+  ["trace table expands declared arrays before runtime values exist", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options, {
+      expandTraceArrays: true
+    });
+    const source = [
+      "count = 0",
+      "ARRAY values[3]",
+      "ARRAY board[2, 2]"
+    ].join("\n");
+    const { js } = translateSource(source);
+
+    app.traceColumns = app.extractInitialTraceColumns(js);
+    app.traceArrayColumns = app.extractInitialTraceArrayColumns(js);
+    app.traceArrayPaths = app.extractInitialTraceArrayPaths(js, source);
+
+    assert.deepEqual(
+      app.traceDisplayColumns.map((column) => column.label),
+      ["count", "[0]", "[1]", "[2]", "[0][0]", "[0][1]", "[1][0]", "[1][1]"]
+    );
+    assert.deepEqual(
+      app.traceHeaderGroups.map((group) => [group.label, group.colspan, group.rowspan]),
+      [
+        ["count", 1, 2],
+        ["values", 3, 1],
+        ["board", 4, 1]
+      ]
+    );
+  }],
+
   ["trace table leaves unchanged scalar values blank", async () => {
     const options = await loadAppOptions();
     const app = buildAppInstance(options);
@@ -1657,6 +1687,41 @@ const cases = [
     assert.deepEqual(app.extractInitialTraceColumns(js), ["index", "total", "values"]);
   }],
 
+  ["trace table orders source variables first and arrays last", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options);
+    const { js } = translateSource([
+      "ARRAY data[3]",
+      "first = 1",
+      "second = 2",
+      "data[0] = first",
+      "third = 3"
+    ].join("\n"));
+
+    assert.deepEqual(app.extractInitialTraceArrayColumns(js), ["data"]);
+    assert.deepEqual(app.extractInitialTraceColumns(js), ["first", "second", "third", "data"]);
+  }],
+
+  ["trace table keeps arrays after later runtime scalar columns", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options);
+
+    app.handleTraceStep({
+      pseudoLine: 1,
+      snapshot: { data: [1, 2], first: 1 },
+      stepIndex: 1,
+      paused: false
+    });
+    app.handleTraceStep({
+      pseudoLine: 2,
+      snapshot: { data: [1, 2], first: 1, second: 2 },
+      stepIndex: 2,
+      paused: false
+    });
+
+    assert.deepEqual(app.traceColumns, ["first", "second", "data"]);
+  }],
+
   ["reset clears terminal output and trace table state", async () => {
     const options = await loadAppOptions();
     const app = buildAppInstance(options, {
@@ -1664,6 +1729,8 @@ const cases = [
       traceEvents: [{ step: 1, line: 2, snapshot: { x: 1 } }],
       traceRows: [{ step: 1, line: 2, snapshot: { x: 1 } }],
       traceColumns: ["x"],
+      traceArrayColumns: ["x"],
+      traceArrayPaths: { x: [[0]] },
       lastTraceSnapshot: { x: 1 },
       currentPseudoLine: 2,
       debugPaused: true,
@@ -1676,10 +1743,49 @@ const cases = [
     assert.deepEqual(app.traceEvents, []);
     assert.deepEqual(app.traceRows, []);
     assert.deepEqual(app.traceColumns, []);
+    assert.deepEqual(app.traceArrayColumns, []);
+    assert.deepEqual(app.traceArrayPaths, {});
     assert.equal(app.lastTraceSnapshot, null);
     assert.equal(app.currentPseudoLine, 0);
     assert.equal(app.debugPaused, false);
     assert.equal(app.running, false);
+  }],
+
+  ["finished programs require reset before starting again", async () => {
+    const options = await loadAppOptions();
+    let terminated = false;
+    const app = buildAppInstance(options, {
+      running: true,
+      outputLines: [{ kind: "output", text: "done" }],
+      traceRows: [{ step: 1, line: 1, snapshot: { x: 1 } }],
+      traceEvents: [{ step: 1, line: 1, snapshot: { x: 1 } }],
+      traceColumns: ["x"],
+      worker: {
+        terminate() {
+          terminated = true;
+        }
+      }
+    });
+
+    app.finishRun(true);
+
+    assert.equal(terminated, true);
+    assert.equal(app.running, false);
+    assert.equal(app.programFinished, true);
+    assert.equal(app.canRun, false);
+    assert.equal(app.canStep, false);
+    assert.equal(app.runStateText, "Finished");
+    assert.deepEqual(app.outputLines, [{ kind: "output", text: "done" }]);
+    assert.equal(app.traceRows.length, 1);
+    assert.equal(await app.startProgram(), false);
+
+    app.stopProgram();
+
+    assert.equal(app.programFinished, false);
+    assert.equal(app.canRun, true);
+    assert.equal(app.canStep, true);
+    assert.deepEqual(app.outputLines, []);
+    assert.deepEqual(app.traceRows, []);
   }],
 
   ["lesson changes reset active run state before loading the new example", async () => {
@@ -1698,6 +1804,8 @@ const cases = [
       traceEvents: [{ step: 1, line: 2, snapshot: { x: 1 } }],
       traceRows: [{ step: 1, line: 2, snapshot: { x: 1 } }],
       traceColumns: ["x"],
+      traceArrayColumns: ["x"],
+      traceArrayPaths: { x: [[0]] },
       lastTraceSnapshot: { x: 1 },
       currentPseudoLine: 2,
       debugPaused: true,
@@ -1721,6 +1829,8 @@ const cases = [
       assert.deepEqual(app.traceEvents, []);
       assert.deepEqual(app.traceRows, []);
       assert.deepEqual(app.traceColumns, []);
+      assert.deepEqual(app.traceArrayColumns, []);
+      assert.deepEqual(app.traceArrayPaths, {});
       assert.equal(app.currentPseudoLine, 0);
       assert.equal(app.editorText, app.examples[1].code);
     } finally {

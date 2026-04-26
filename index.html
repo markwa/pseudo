@@ -21,7 +21,7 @@
           </select>
           <i class="bi bi-chevron-down select-arrow" aria-hidden="true"></i>
         </label>
-        <button class="btn primary btn-compact" @click="runProgram" :disabled="running">
+        <button class="btn primary btn-compact" @click="runProgram" :disabled="!canRun">
           <i class="bi bi-play-fill" aria-hidden="true"></i><span>Run</span>
         </button>
         <button class="btn btn-compact" @click="stepProgram" :disabled="!canStep">
@@ -55,7 +55,7 @@
       <section class="panel editor-panel">
         <div class="panel-head">
           <h2>{{ showJs ? 'Generated JavaScript' : 'Editor' }}</h2>
-          <span class="status" :class="{ running }">{{ running ? 'Running' : 'Idle' }}</span>
+          <span class="status" :class="{ running }">{{ runStateText }}</span>
         </div>
         <template v-if="!showJs">
           <div class="editor-shell">
@@ -171,7 +171,7 @@
         <div class="trace-table-wrap">
           <table class="trace-table">
             <thead>
-              <tr>
+              <tr class="trace-head-main">
                 <th v-if="!compressTraceTable" rowspan="2">Line</th>
                 <th
                   v-for="group in traceHeaderGroups"
@@ -181,7 +181,7 @@
                   :class="{ 'trace-group-head': group.expanded }"
                 >{{ group.label }}</th>
               </tr>
-              <tr>
+              <tr class="trace-head-index">
                 <th v-for="column in traceDisplayColumns.filter((entry) => entry.expanded)" :key="column.key">{{ column.label }}</th>
               </tr>
             </thead>

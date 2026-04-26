@@ -558,12 +558,15 @@ const app = Vue.createApp({
       showTraceTable: true,
       expandTraceArrays: false,
       running: false,
+      programFinished: false,
       debugPaused: false,
       currentPseudoLine: 0,
       compressTraceTable: false,
       traceEvents: [],
       traceRows: [],
       traceColumns: [],
+      traceArrayColumns: [],
+      traceArrayPaths: {},
       lastTraceSnapshot: null,
       promptActive: false,
       promptText: "",
@@ -587,6 +590,9 @@ const app = Vue.createApp({
       return this.virtualFiles.find((file) => file.path === this.selectedVirtualFilePath) || null;
     },
     canStep() {
+      if (this.programFinished) {
+        return false;
+      }
       if (this.promptActive) {
         return false;
       }
@@ -600,6 +606,15 @@ const app = Vue.createApp({
     },
     canPause() {
       return this.running && !this.debugPaused;
+    },
+    canRun() {
+      return !this.running && !this.programFinished;
+    },
+    runStateText() {
+      if (this.running) {
+        return "Running";
+      }
+      return this.programFinished ? "Finished" : "Idle";
     },
     traceDisplayColumns() {
       return this.buildTraceDisplayColumns();
@@ -749,6 +764,9 @@ const app = Vue.createApp({
       return loaded;
     },
     async startProgram(options = {}) {
+      if (this.programFinished) {
+        return false;
+      }
       const startPaused = !!options.startPaused;
       const initialControl = typeof options.initialControl === "string" ? options.initialControl : "";
       await this.exampleLoadPromise;
@@ -769,8 +787,11 @@ const app = Vue.createApp({
       this.generatedJs = compiled.js;
       this.lineMap = compiled.lineMap;
       this.traceColumns = this.extractInitialTraceColumns(compiled.js);
+      this.traceArrayColumns = this.extractInitialTraceArrayColumns(compiled.js);
+      this.traceArrayPaths = this.extractInitialTraceArrayPaths(compiled.js, this.editorText);
 
       this.running = true;
+      this.programFinished = false;
       this.debugPaused = startPaused;
       this.terminalStatus = startPaused ? "Running (paused)" : "Running";
       this.promptActive = false;
@@ -813,6 +834,7 @@ const app = Vue.createApp({
       this.promptText = "";
       this.inputValue = "";
       this.running = false;
+      this.programFinished = false;
       this.debugPaused = false;
       this.currentPseudoLine = 0;
       this.terminalStatus = "Idle";
@@ -827,6 +849,8 @@ const app = Vue.createApp({
       this.traceRows = [];
       this.traceEvents = [];
       this.traceColumns = [];
+      this.traceArrayColumns = [];
+      this.traceArrayPaths = {};
       this.lastTraceSnapshot = null;
     },
     async stepProgram() {
@@ -914,6 +938,7 @@ const app = Vue.createApp({
         this.worker = null;
       }
       this.running = false;
+      this.programFinished = true;
       this.debugPaused = false;
       this.promptActive = false;
       this.inputValue = "";
@@ -948,10 +973,30 @@ const app = Vue.createApp({
     },
     updateTraceColumns(snapshot) {
       const nextColumns = new Set(this.traceColumns);
+      const nextArrays = new Set(this.traceArrayColumns);
       for (const key of Object.keys(snapshot || {})) {
         nextColumns.add(key);
+        if (Array.isArray(snapshot[key])) {
+          nextArrays.add(key);
+        }
       }
-      this.traceColumns = Array.from(nextColumns).sort((left, right) => left.localeCompare(right));
+      this.traceArrayColumns = Array.from(nextArrays).filter((column) => nextColumns.has(column));
+      this.traceColumns = this.orderTraceColumnNames(Array.from(nextColumns), this.traceArrayColumns);
+    },
+    orderTraceColumnNames(columns, arrayColumns = []) {
+      const arrays = new Set(arrayColumns);
+      const uniqueColumns = [];
+      const seen = new Set();
+      for (const column of columns) {
+        if (!seen.has(column)) {
+          seen.add(column);
+          uniqueColumns.push(column);
+        }
+      }
+      return [
+        ...uniqueColumns.filter((column) => !arrays.has(column)),
+        ...uniqueColumns.filter((column) => arrays.has(column))
+      ];
     },
     buildTraceDisplayColumns() {
       if (!this.expandTraceArrays) {
@@ -972,6 +1017,13 @@ const app = Vue.createApp({
       for (const column of this.traceColumns) {
         const paths = [];
         const seen = new Set();
+        for (const path of this.traceArrayPaths[column] || []) {
+          const key = path.join(".");
+          if (!seen.has(key)) {
+            seen.add(key);
+            paths.push(path);
+          }
+        }
         for (const snapshot of snapshots) {
           const value = snapshot ? snapshot[column] : undefined;
           if (!Array.isArray(value)) {
@@ -1105,7 +1157,8 @@ const app = Vue.createApp({
         hiddenVariables.add(match[1]);
       }
 
-      const columns = new Set();
+      const columns = [];
+      const seenColumns = new Set();
       const trackPattern = /__runtime\.trackVar\(("(?:[^"\\]|\\.)*")\s*,\s*([A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)?)\)/g;
       for (const match of String(jsCode || "").matchAll(trackPattern)) {
         let name;
@@ -1118,9 +1171,77 @@ const app = Vue.createApp({
         if (hiddenVariables.has(name) || hiddenVariables.has(valueReference)) {
           continue;
         }
-        columns.add(name);
+        if (!seenColumns.has(name)) {
+          seenColumns.add(name);
+          columns.push(name);
+        }
       }
-      return Array.from(columns).sort((left, right) => left.localeCompare(right));
+      return this.orderTraceColumnNames(columns, this.extractInitialTraceArrayColumns(jsCode));
+    },
+    extractInitialTraceArrayColumns(jsCode) {
+      const arrayColumns = new Set();
+      const declarationPattern = /var\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*(?:new\s+Array\s*\(|Array\.from\s*\(|\[)/g;
+      for (const match of String(jsCode || "").matchAll(declarationPattern)) {
+        arrayColumns.add(match[1]);
+      }
+      return Array.from(arrayColumns);
+    },
+    extractInitialTraceArrayPaths(jsCode, sourceText = "") {
+      const pathsByColumn = {};
+      for (const declaration of this.extractSourceArrayDeclarations(sourceText)) {
+        const paths = this.buildTraceArrayPathsFromDimensions(declaration.dimensions);
+        if (paths.length) {
+          pathsByColumn[declaration.name] = paths;
+        }
+      }
+      if (Object.keys(pathsByColumn).length) {
+        return pathsByColumn;
+      }
+
+      const js = String(jsCode || "");
+      const oneDimensionalPattern = /var\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*new\s+Array\((\d+)\)/g;
+      for (const match of js.matchAll(oneDimensionalPattern)) {
+        pathsByColumn[match[1]] = this.buildTraceArrayPathsFromDimensions([Number(match[2])]);
+      }
+      const twoDimensionalPattern = /var\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*Array\.from\(\{\s*length:\s*(\d+)\s*\},\s*\(\)\s*=>\s*new\s+Array\((\d+)\)\)/g;
+      for (const match of js.matchAll(twoDimensionalPattern)) {
+        pathsByColumn[match[1]] = this.buildTraceArrayPathsFromDimensions([Number(match[2]), Number(match[3])]);
+      }
+      return pathsByColumn;
+    },
+    extractSourceArrayDeclarations(sourceText) {
+      const declarations = [];
+      for (const line of String(sourceText || "").split(/\r?\n/)) {
+        const code = line.replace(/\/\/.*$/, "").trim();
+        const match = code.match(/^ARRAY\s+([A-Za-z][A-Za-z0-9_]*)\s*\[([^\]]+)\]/i);
+        if (!match) {
+          continue;
+        }
+        declarations.push({
+          name: match[1],
+          dimensions: match[2].split(",").map((part) => Number(part.trim()))
+        });
+      }
+      return declarations;
+    },
+    buildTraceArrayPathsFromDimensions(dimensions) {
+      if (!Array.isArray(dimensions) || !dimensions.length || dimensions.length > 2 || dimensions.some((dimension) => !Number.isInteger(dimension) || dimension < 0)) {
+        return [];
+      }
+      const [rows, columns] = dimensions;
+      const paths = [];
+      if (dimensions.length === 1) {
+        for (let index = 0; index < rows; index += 1) {
+          paths.push([index]);
+        }
+        return paths;
+      }
+      for (let row = 0; row < rows; row += 1) {
+        for (let column = 0; column < columns; column += 1) {
+          paths.push([row, column]);
+        }
+      }
+      return paths;
     },
     formatTraceCell(row, column) {
       if (row && row.compressed) {
@@ -1662,7 +1783,7 @@ function createRunnerWorker(initialFiles = []) {
 
     function snapshotTrackedVars() {
       const snapshot = {};
-      const keys = Array.from(trackedVars.keys()).sort((left, right) => left.localeCompare(right));
+      const keys = Array.from(trackedVars.keys());
       for (const key of keys) {
         const value = trackedVars.get(key);
         if (isTraceHiddenValue(value)) {
