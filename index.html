@@ -156,25 +156,40 @@
       <section v-if="showTraceTable" class="trace-viewer" aria-label="Execution trace table">
         <div class="trace-head">
           <h3>Trace Table</h3>
-          <p class="trace-summary">{{ traceRows.length }} step{{ traceRows.length === 1 ? '' : 's' }}</p>
+          <div class="trace-head-actions">
+            <label class="trace-toggle">
+              <input type="checkbox" v-model="expandTraceArrays">
+              <span>Expand arrays</span>
+            </label>
+            <p class="trace-summary">{{ traceRows.length }} step{{ traceRows.length === 1 ? '' : 's' }}</p>
+          </div>
         </div>
         <div class="trace-table-wrap">
           <table class="trace-table">
             <thead>
               <tr>
-                <th>Line</th>
-                <th v-for="column in traceColumns" :key="column">{{ column }}</th>
+                <th rowspan="2">Line</th>
+                <th
+                  v-for="group in traceHeaderGroups"
+                  :key="group.key"
+                  :colspan="group.colspan"
+                  :rowspan="group.rowspan"
+                  :class="{ 'trace-group-head': group.expanded }"
+                >{{ group.label }}</th>
+              </tr>
+              <tr>
+                <th v-for="column in traceDisplayColumns.filter((entry) => entry.expanded)" :key="column.key">{{ column.label }}</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="row in traceRows" :key="row.step">
                 <td>{{ formatTraceLine(row) }}</td>
-                <td v-for="column in traceColumns" :key="column">
+                <td v-for="column in traceDisplayColumns" :key="column.key">
                   <span class="trace-cell-content">{{ formatTraceCell(row, column) }}</span>
                 </td>
               </tr>
               <tr v-if="!traceRows.length">
-                <td class="trace-empty" :colspan="1 + traceColumns.length">Run a program and step through it to build the trace table.</td>
+                <td class="trace-empty" :colspan="1 + traceDisplayColumns.length">Run a program and step through it to build the trace table.</td>
               </tr>
             </tbody>
           </table>

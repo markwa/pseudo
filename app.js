@@ -556,6 +556,7 @@ const app = Vue.createApp({
       showJs: false,
       showVirtualFs: false,
       showTraceTable: true,
+      expandTraceArrays: false,
       running: false,
       debugPaused: false,
       currentPseudoLine: 0,
@@ -597,6 +598,12 @@ const app = Vue.createApp({
     },
     canPause() {
       return this.running && !this.debugPaused;
+    },
+    traceDisplayColumns() {
+      return this.buildTraceDisplayColumns();
+    },
+    traceHeaderGroups() {
+      return this.buildTraceHeaderGroups();
     }
   },
   watch: {
@@ -632,6 +639,9 @@ const app = Vue.createApp({
       this.persistState();
     },
     showTraceTable() {
+      this.persistState();
+    },
+    expandTraceArrays() {
       this.persistState();
     }
   },
@@ -925,6 +935,104 @@ const app = Vue.createApp({
       }
       this.traceColumns = Array.from(nextColumns).sort((left, right) => left.localeCompare(right));
     },
+    buildTraceDisplayColumns() {
+      if (!this.expandTraceArrays) {
+        return this.traceColumns.map((column) => ({
+          key: column,
+          label: column,
+          source: column,
+          path: null,
+          expanded: false
+        }));
+      }
+      const snapshots = this.traceRows.map((row) => row.snapshot).filter(Boolean);
+      if (this.lastTraceSnapshot) {
+        snapshots.push(this.lastTraceSnapshot);
+      }
+      const displayColumns = [];
+      for (const column of this.traceColumns) {
+        const paths = [];
+        const seen = new Set();
+        for (const snapshot of snapshots) {
+          const value = snapshot ? snapshot[column] : undefined;
+          if (!Array.isArray(value)) {
+            continue;
+          }
+          for (const path of this.collectTraceArrayPaths(value)) {
+            const key = path.join(".");
+            if (!seen.has(key)) {
+              seen.add(key);
+              paths.push(path);
+            }
+          }
+        }
+        if (!paths.length) {
+          displayColumns.push({
+            key: column,
+            label: column,
+            source: column,
+            path: null,
+            expanded: false
+          });
+          continue;
+        }
+        for (const path of paths) {
+          const suffix = path.map((index) => `[${index}]`).join("");
+          displayColumns.push({
+            key: `${column}${suffix}`,
+            label: suffix,
+            group: column,
+            source: column,
+            path,
+            expanded: true
+          });
+        }
+      }
+      return displayColumns;
+    },
+    buildTraceHeaderGroups() {
+      const groups = [];
+      for (const column of this.traceDisplayColumns) {
+        if (!column.expanded) {
+          groups.push({
+            key: column.key,
+            label: column.label,
+            colspan: 1,
+            rowspan: 2,
+            expanded: false
+          });
+          continue;
+        }
+        const previous = groups[groups.length - 1];
+        if (previous && previous.expanded && previous.label === column.group) {
+          previous.colspan += 1;
+          continue;
+        }
+        groups.push({
+          key: `group:${column.group}`,
+          label: column.group,
+          colspan: 1,
+          rowspan: 1,
+          expanded: true
+        });
+      }
+      return groups;
+    },
+    collectTraceArrayPaths(value, basePath = []) {
+      if (!Array.isArray(value)) {
+        return [];
+      }
+      const paths = [];
+      for (let index = 0; index < value.length; index += 1) {
+        const nextPath = [...basePath, index];
+        if (Array.isArray(value[index])) {
+          paths.push(...this.collectTraceArrayPaths(value[index], nextPath));
+        } else {
+          paths.push(nextPath);
+        }
+      }
+      return paths;
+    },
     extractInitialTraceColumns(jsCode) {
       const hiddenVariables = new Set();
       const handlePattern = /(?:var\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*await\s+__runtime\.open(?:Read|Write)\(/g;
@@ -950,6 +1058,12 @@ const app = Vue.createApp({
       return Array.from(columns).sort((left, right) => left.localeCompare(right));
     },
     formatTraceCell(row, column) {
+      if (column && typeof column === "object") {
+        if (column.expanded) {
+          return this.formatExpandedTraceCell(row, column);
+        }
+        column = column.source;
+      }
       if (!row || !row.snapshot || !(column in row.snapshot)) {
         return "";
       }
@@ -964,6 +1078,23 @@ const app = Vue.createApp({
       if (this.isTraceContainer(value) && this.isTraceContainer(previousValue)) {
         const changes = this.collectTraceValueChanges(previousValue, value, "");
         return changes.join(", ");
+      }
+      return this.formatTraceValue(value);
+    },
+    formatExpandedTraceCell(row, column) {
+      if (!row || !row.snapshot || !column || !column.source || !Array.isArray(column.path) || !(column.source in row.snapshot)) {
+        return "";
+      }
+      const value = this.getTracePathValue(row.snapshot[column.source], column.path);
+      if (value === undefined && !this.hasTracePath(row.snapshot[column.source], column.path)) {
+        return "";
+      }
+      const previousSource = this.previousTraceValue(row, column.source);
+      if (this.isTraceContainer(previousSource) && this.hasTracePath(previousSource, column.path)) {
+        const previousValue = this.getTracePathValue(previousSource, column.path);
+        if (this.isTraceValueEqual(previousValue, value)) {
+          return "";
+        }
       }
       return this.formatTraceValue(value);
     },
@@ -1024,6 +1155,26 @@ const app = Vue.createApp({
         return undefined;
       }
       return previousRow.snapshot[column];
+    },
+    getTracePathValue(value, path) {
+      let current = value;
+      for (const index of path) {
+        if (!Array.isArray(current) || index < 0 || index >= current.length) {
+          return undefined;
+        }
+        current = current[index];
+      }
+      return current;
+    },
+    hasTracePath(value, path) {
+      let current = value;
+      for (const index of path) {
+        if (!Array.isArray(current) || index < 0 || index >= current.length) {
+          return false;
+        }
+        current = current[index];
+      }
+      return true;
     },
     formatTraceValue(value) {
       if (value === null) {
@@ -1285,6 +1436,7 @@ const app = Vue.createApp({
         showJs: this.showJs,
         showVirtualFs: this.showVirtualFs,
         showTraceTable: this.showTraceTable,
+        expandTraceArrays: this.expandTraceArrays,
         virtualFiles: this.serializeVirtualFiles(),
         selectedVirtualFilePath: this.selectedVirtualFilePath
       };
@@ -1318,6 +1470,9 @@ const app = Vue.createApp({
         }
         if (typeof state.showTraceTable === "boolean") {
           this.showTraceTable = state.showTraceTable;
+        }
+        if (typeof state.expandTraceArrays === "boolean") {
+          this.expandTraceArrays = state.expandTraceArrays;
         }
         if (Array.isArray(state.virtualFiles)) {
           this.virtualFiles = normalizeVirtualFiles(state.virtualFiles);

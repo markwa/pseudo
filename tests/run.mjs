@@ -1405,6 +1405,63 @@ const cases = [
     );
   }],
 
+  ["trace table can expand one-dimensional arrays into element columns", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options, {
+      expandTraceArrays: true
+    });
+    const snapshots = [
+      { count: 1, data: [10, 2] },
+      { count: 2, data: [10, 5] }
+    ];
+
+    snapshots.forEach((snapshot, index) => {
+      app.handleTraceStep({
+        pseudoLine: index + 1,
+        snapshot,
+        stepIndex: index + 1,
+        paused: false
+      });
+    });
+
+    assert.deepEqual(app.traceHeaderGroups.map((group) => [group.label, group.colspan, group.rowspan]), [
+      ["count", 1, 2],
+      ["data", 2, 1]
+    ]);
+    assert.deepEqual(app.traceDisplayColumns.map((column) => column.label), ["count", "[0]", "[1]"]);
+    assert.equal(app.formatTraceCell(app.traceRows[0], app.traceDisplayColumns[1]), "10");
+    assert.equal(app.formatTraceCell(app.traceRows[0], app.traceDisplayColumns[2]), "2");
+    assert.equal(app.formatTraceCell(app.traceRows[1], app.traceDisplayColumns[1]), "");
+    assert.equal(app.formatTraceCell(app.traceRows[1], app.traceDisplayColumns[2]), "5");
+  }],
+
+  ["trace table can expand two-dimensional arrays into row-major element columns", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options, {
+      expandTraceArrays: true
+    });
+
+    app.handleTraceStep({
+      pseudoLine: 1,
+      snapshot: { board: [[1, 2], [3, 4]] },
+      stepIndex: 1,
+      paused: false
+    });
+
+    assert.deepEqual(
+      app.traceDisplayColumns.map((column) => column.label),
+      ["[0][0]", "[0][1]", "[1][0]", "[1][1]"]
+    );
+    assert.deepEqual(
+      app.traceHeaderGroups.map((group) => [group.label, group.colspan, group.rowspan]),
+      [["board", 4, 1]]
+    );
+    assert.deepEqual(
+      app.traceDisplayColumns.map((column) => app.formatTraceCell(app.traceRows[0], column)),
+      ["1", "2", "3", "4"]
+    );
+  }],
+
   ["trace table leaves unchanged scalar values blank", async () => {
     const options = await loadAppOptions();
     const app = buildAppInstance(options);
@@ -2280,6 +2337,7 @@ const cases = [
         selectedExample: 0,
         showJs: true,
         showVirtualFs: true,
+        expandTraceArrays: true,
         virtualFiles: [
           { path: "b.txt", lines: ["two"] },
           { path: "a.txt", lines: ["one"] }
@@ -2308,6 +2366,7 @@ const cases = [
       assert.equal(saved.editorText, 'PRINT("custom")');
       assert.equal(saved.showJs, true);
       assert.equal(saved.showVirtualFs, true);
+      assert.equal(saved.expandTraceArrays, true);
       assert.equal(saved.selectedVirtualFilePath, "b.txt");
       assert.equal(saved.selectedExampleName, initial.examples[0].name);
       assert.deepEqual(saved.virtualFiles, [
@@ -2321,6 +2380,7 @@ const cases = [
         selectedExampleName: "Files",
         showJs: false,
         showVirtualFs: true,
+        expandTraceArrays: true,
         virtualFiles: [{ path: "notes.txt", lines: ["alpha"] }],
         selectedVirtualFilePath: "notes.txt"
       }));
@@ -2331,6 +2391,7 @@ const cases = [
       assert.equal(restored.editorText, 'PRINT("restored")');
       assert.equal(restored.showJs, false);
       assert.equal(restored.showVirtualFs, true);
+      assert.equal(restored.expandTraceArrays, true);
       assert.equal(restored.virtualFiles.length, 1);
       assert.equal(restored.virtualFiles[0].path, "notes.txt");
       assert.equal(restored.selectedVirtualFilePath, "notes.txt");
