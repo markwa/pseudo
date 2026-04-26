@@ -3,8 +3,8 @@ import { readFileSync } from "node:fs";
 
 import { loadFixture, runSource, translateSource } from "./helpers.mjs";
 
-function loadTestcase(name) {
-  return readFileSync(new URL(`./testcases/${name}.ocr`, import.meta.url), "utf8");
+function loadTestcase(name, language = "ocr") {
+  return readFileSync(new URL(`./testcases/${name}.${language === "python" ? "py" : "ocr"}`, import.meta.url), "utf8");
 }
 
 function loadSortInputLines(folder) {
@@ -110,6 +110,66 @@ const cases = [
     assert.match(js, /class Dog extends Pet/);
     assert.match(js, /super\(givenName\);/);
     assert.deepEqual(output, ["hello Hamish", "Fido - Scottish Terrier"]);
+  }],
+  ["python basics fixture translates and runs", async () => {
+    const source = loadFixture("basics", "python");
+    const { js, output, lineMap } = await runSource(source, { inputs: ["Mark"] }, { language: "python" });
+
+    assert.match(js, /await __runtime\.input\("Enter your name: "\)/);
+    assert.match(js, /var score = 5 \+ 6; __runtime\.trackVar\("score", score\);/);
+    assert.deepEqual(output, ["Hello Mark", "Score is 11", "big"]);
+    assert.ok(lineMap.length > 0);
+  }],
+  ["python arrays, strings, and virtual files translate and execute", async () => {
+    const source = loadFixture("arrays_files", "python");
+    const { js, output, files } = await runSource(source, {}, { language: "python" });
+
+    assert.match(js, /var names = \["Ada", "Bo", "Cara", "Dana", "Eli"\]; __runtime\.trackVar\("names", names\);/);
+    assert.match(js, /await __runtime\.openWrite\("sample\.txt"\)/);
+    assert.deepEqual(output, ["Dana", "5", "npu", "Hello World"]);
+    assert.deepEqual(files.get("sample.txt"), ["Hello World"]);
+  }],
+  ["python functions, classes, and inheritance execute", async () => {
+    const source = loadFixture("subroutines_oop", "python");
+    const { js, output } = await runSource(source, {}, { language: "python" });
+
+    assert.match(js, /async function triple\(number\)/);
+    assert.match(js, /class Dog extends Pet/);
+    assert.match(js, /super\(given_name\);/);
+    assert.deepEqual(output, ["hello Hamish", "Fido - Scottish Terrier"]);
+  }],
+  ["python for loops, booleans, and nested indexing execute", async () => {
+    const source = [
+      "total = 0",
+      "for i in range(1, 4):",
+      "    total = total + i",
+      "board = [[\"a\", \"b\"], [\"c\", \"d\"]]",
+      "if total == 6 and not False:",
+      "    print(board[1][0])",
+      "print(str(total))"
+    ].join("\n");
+    const { js, output } = await runSource(source, {}, { language: "python" });
+
+    assert.match(js, /for \(; i < 4; i \+= 1, __runtime\.trackVar\("i", i\)\)/);
+    assert.match(js, /if \(total == 6 && ! false\)/);
+    assert.deepEqual(output, ["c", "6"]);
+  }],
+  ["python syntax errors report source lines", () => {
+    assert.throws(
+      () => translateSource("if True\n    print(\"x\")", { language: "python" }),
+      (error) => error.line === 1
+    );
+  }],
+  ["python testcase executes through the shared runtime contract", async () => {
+    const { output } = await runSource(loadTestcase("Basic_IO", "python"), { inputs: ["17"] }, { language: "python" });
+
+    assert.deepEqual(output, ["Child"]);
+  }],
+  ["python file testcase uses file handles through the shared runtime contract", async () => {
+    const { output, files } = await runSource(loadTestcase("File_Handling", "python"), {}, { language: "python" });
+
+    assert.deepEqual(output, ["alpha", "beta"]);
+    assert.deepEqual(files.get("sample.txt"), ["alpha", "beta"]);
   }],
   ["comments and curly quotes normalize", () => {
     const source = `// leading comment\nprint(“hello”) // trailing comment`;
@@ -1304,6 +1364,68 @@ const cases = [
     } finally {
       globalThis.localStorage = originalLocalStorage;
       globalThis.fetch = originalFetch;
+    }
+  }],
+  ["switching language swaps to the matching example and resets the active run", async () => {
+    const originalLocalStorage = globalThis.localStorage;
+    globalThis.localStorage = {
+      getItem() {
+        return null;
+      },
+      setItem() {}
+    };
+
+    try {
+      const options = await loadAppOptions();
+      const app = buildAppInstance(options, {
+        running: true,
+        worker: {
+          terminate() {}
+        }
+      });
+      const ocrIndex = app.examples.findIndex((example) => example.name === "Files");
+
+      assert.ok(ocrIndex >= 0);
+
+      app.selectedExample = ocrIndex;
+      await app.loadExample();
+
+      assert.equal(app.selectedLanguage, "ocr");
+      assert.match(app.editorText, /OPENWRITE\("sample\.txt"\)/);
+
+      app.running = true;
+      app.programFinished = false;
+      app.worker = {
+        terminate() {}
+      };
+      app.selectedLanguage = "python";
+      options.watch.selectedLanguage.call(app);
+      options.watch.selectedExample.call(app);
+      await app.exampleLoadPromise;
+
+      assert.equal(app.running, false);
+      assert.equal(app.programFinished, false);
+      assert.equal(app.examples[app.selectedExample].name, "Files (Python)");
+      assert.match(app.editorText, /openWrite\("sample\.txt"\)/);
+    } finally {
+      globalThis.localStorage = originalLocalStorage;
+    }
+  }],
+
+  ["python examples cover every OCR lesson example by key", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options);
+    const ocrKeys = app.examples
+      .filter((example) => !example.separator && example.language === "ocr")
+      .map((example) => example.exampleKey);
+    const pythonKeys = new Set(
+      app.examples
+        .filter((example) => !example.separator && example.language === "python")
+        .map((example) => example.exampleKey)
+    );
+
+    for (const key of ocrKeys) {
+      assert.equal(pythonKeys.has(key), true, `Missing Python example for ${key}`);
     }
   }],
 
@@ -2593,6 +2715,7 @@ const cases = [
       const initial = buildAppInstance(options, {
         editorText: 'PRINT("custom")',
         selectedExample: 0,
+        selectedLanguage: "python",
         showJs: true,
         showVirtualFs: true,
         expandTraceArrays: true,
@@ -2603,26 +2726,15 @@ const cases = [
         ],
         selectedVirtualFilePath: "b.txt"
       });
-      assert.deepEqual(
-        initial.examples.slice(-9).map((example) => example.name),
-        [
-          "Algorithms",
-          "Bubble Sort",
-          "Insertion Sort",
-          "Merge Sort",
-          "Quick Sort",
-          "Linear Search",
-          "Binary Search",
-          "Examples",
-          "Battleship"
-        ]
-      );
-      assert.equal(initial.examples[initial.examples.length - 9].separator, true);
-      assert.equal(initial.examples[initial.examples.length - 2].separator, true);
+      assert.ok(initial.examples.some((example) => example.name === "Algorithms" && example.separator));
+      assert.ok(initial.examples.some((example) => example.name === "Files"));
+      assert.ok(initial.examples.some((example) => example.name === "Python" && example.separator));
+      assert.ok(initial.examples.some((example) => example.name === "Files (Python)" && example.language === "python"));
       initial.persistState();
 
       const saved = JSON.parse(store.get("ocr-pseudocode-teaching-tool:v1"));
       assert.equal(saved.editorText, 'PRINT("custom")');
+      assert.equal(saved.selectedLanguage, "python");
       assert.equal(saved.showJs, true);
       assert.equal(saved.showVirtualFs, true);
       assert.equal(saved.expandTraceArrays, true);
@@ -2637,7 +2749,8 @@ const cases = [
       store.set("ocr-pseudocode-teaching-tool:v1", JSON.stringify({
         editorText: 'PRINT("restored")',
         selectedExample: 0,
-        selectedExampleName: "Files",
+        selectedExampleName: "Files (Python)",
+        selectedLanguage: "python",
         showJs: false,
         showVirtualFs: true,
         expandTraceArrays: true,
@@ -2650,6 +2763,7 @@ const cases = [
       restored.restoreState();
 
       assert.equal(restored.editorText, 'PRINT("restored")');
+      assert.equal(restored.selectedLanguage, "python");
       assert.equal(restored.showJs, false);
       assert.equal(restored.showVirtualFs, true);
       assert.equal(restored.expandTraceArrays, true);
@@ -2657,7 +2771,7 @@ const cases = [
       assert.equal(restored.virtualFiles.length, 1);
       assert.equal(restored.virtualFiles[0].path, "notes.txt");
       assert.equal(restored.selectedVirtualFilePath, "notes.txt");
-      assert.equal(restored.examples[restored.selectedExample].name, "Files");
+      assert.equal(restored.examples[restored.selectedExample].name, "Files (Python)");
     } finally {
       globalThis.localStorage = originalLocalStorage;
     }

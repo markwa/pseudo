@@ -1,9 +1,19 @@
+import { translatePythonProgram } from "./python-translator.js";
+
 const KEYWORDS = new Set([
   "AND", "OR", "NOT", "MOD", "DIV",
   "TRUE", "FALSE", "NULL", "NEW", "SUPER", "THIS"
 ]);
 
-export function translateProgram(source) {
+export function translateProgram(source, options = {}) {
+  const language = normalizeLanguage(options.language);
+  if (language === "python") {
+    return translatePythonProgram(source);
+  }
+  return translateOcrProgram(source);
+}
+
+export function translateOcrProgram(source) {
   const rawLines = String(source || "").split(/\r?\n/);
   const lines = rawLines.map((line) => normalizeSource(line));
   const ctx = {
@@ -18,7 +28,11 @@ export function translateProgram(source) {
   };
 }
 
-function formatGeneratedJs(lines) {
+function normalizeLanguage(language) {
+  return String(language || "ocr").trim().toLowerCase() === "python" ? "python" : "ocr";
+}
+
+export function formatGeneratedJs(lines) {
   const formatted = [];
   const blockStack = [];
   let indent = 0;
@@ -1162,13 +1176,13 @@ function makeScope(parent = null) {
   };
 }
 
-function buildTrackVarExpression(name, valueCode = null) {
+export function buildTrackVarExpression(name, valueCode = null) {
   const key = JSON.stringify(String(name));
   const value = valueCode || String(name);
   return `__runtime.trackVar(${key}, ${value})`;
 }
 
-function instrumentDebugTrace(lines, lineMap, sourceLines = []) {
+export function instrumentDebugTrace(lines, lineMap, sourceLines = []) {
   const instrumentedLines = [];
   const instrumentedMap = [];
   let classBraceDepth = 0;
@@ -1295,7 +1309,7 @@ function emit(lines, lineMap, sourceLine, code) {
   lineMap.push(sourceLine);
 }
 
-function syntaxError(message, line) {
+export function syntaxError(message, line) {
   const error = new Error(message);
   error.line = line;
   return error;

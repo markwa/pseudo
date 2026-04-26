@@ -12,7 +12,7 @@ const SORT_INPUT_SOURCE_BY_LESSON = {
 const SEARCH_INPUT_SOURCE = "example-data/searching/common/search.txt";
 const FILE_LOOP_INPUT_SOURCE = "example-data/files/sample.txt";
 
-const EXAMPLES = [
+const OCR_EXAMPLES = [
   {
     name: "Input",
     code: `// Ask the user for a name and print a greeting.
@@ -521,6 +521,481 @@ NEXT row`
   }
 ];
 
+const PYTHON_EXAMPLES = [
+  {
+    name: "Input (Python)",
+    code: `# Ask the user for a name and print a greeting.
+name = input("Name? ")
+print("Hello " + name)`
+  },
+  {
+    name: "Strings (Python)",
+    code: `# Manipulate text with concatenation, len(), and slicing.
+text = "HELLO WORLD"
+print(text + "!")
+print(str(len(text)))
+print(text[6:11])`
+  },
+  {
+    name: "Selection (Python)",
+    code: `# Use if / elif / else to choose one branch.
+score = 72
+if score >= 80:
+    print("Excellent")
+elif score >= 50:
+    print("Pass")
+else:
+    print("Try again")`
+  },
+  {
+    name: "Boolean logic (Python)",
+    code: `# Combine and, or, and not inside one decision.
+age = 16
+has_permission = True
+door_open = False
+if (age >= 16 and has_permission) or not door_open:
+    print("Allowed")
+else:
+    print("Blocked")`
+  },
+  {
+    name: "Procedures (Python)",
+    code: `# Use a function for side effects and early return.
+def announce(message):
+    if message == "":
+        return
+    print(">> " + message)
+
+announce("Hello")
+announce("")`
+  },
+  {
+    name: "Counted loop (Python)",
+    code: `# Count from 1 to 3 with range().
+for i in range(1, 4):
+    print("Count " + str(i))`
+  },
+  {
+    name: "While loop (Python)",
+    code: `# Repeat while the condition stays true.
+n = 3
+while n > 0:
+    print(str(n))
+    n = n - 1
+print("Done")`
+  },
+  {
+    name: "Do until (Python)",
+    code: `# Keep going until the condition becomes true.
+attempts = 0
+while attempts != 3:
+    attempts = attempts + 1
+    print("Try " + str(attempts))
+print("Stopped")`
+  },
+  {
+    name: "Recursion (Python)",
+    code: `# A function can call itself to count down.
+def countdown(n):
+    if n == 0:
+        return
+    print(str(n))
+    countdown(n - 1)
+
+countdown(3)`
+  },
+  {
+    name: "2D arrays (Python)",
+    code: `# Use nested lists with row and column indexes.
+board = [["rook", "knight"], ["bishop", "queen"]]
+print(board[1][1])`
+  },
+  {
+    name: "Casting (Python)",
+    code: `# Convert strings into numbers with int() and float().
+whole = int("7")
+decimal = float("3.5")
+print(str(whole + 1))
+print(str(decimal + 0.5))`
+  },
+  {
+    name: "Switch (Python)",
+    code: `# Use if / elif / else to choose from several fixed values.
+day = 3
+if day == 1:
+    print("Mon")
+elif day == 2:
+    print("Tue")
+elif day == 3:
+    print("Wed")
+else:
+    print("Other")`
+  },
+  {
+    name: "Inheritance (Python)",
+    code: `# A class can inherit methods from a parent class.
+class Pet:
+    def __init__(self, given_name):
+        self.name = given_name
+
+    def get_name(self):
+        return self.name
+
+class Dog(Pet):
+    def __init__(self, given_name, given_breed):
+        super().__init__(given_name)
+        self.breed = given_breed
+
+    def describe(self):
+        return self.get_name() + " - " + self.breed
+
+my_dog = Dog("Fido", "Terrier")
+print(my_dog.describe())`
+  },
+  {
+    name: "Global scope (Python)",
+    code: `# Use global to update a variable outside the function.
+total = 0
+
+def add_to_total(amount):
+    global total
+    total = amount
+
+add_to_total(7)
+print(str(total))`
+  },
+  {
+    name: "File loop (Python)",
+    files: [{ path: "sample.txt", source: FILE_LOOP_INPUT_SOURCE }],
+    code: `# Read a file until endOfFile() is true.
+my_file = openRead("sample.txt")
+while not my_file.endOfFile():
+    print(my_file.readLine())
+my_file.close()`
+  },
+  {
+    name: "Files (Python)",
+    code: `# Write a file, then read it back.
+my_file = openWrite("sample.txt")
+my_file.writeLine("Hello World")
+my_file.close()
+
+my_file = openRead("sample.txt")
+print(my_file.readLine())
+my_file.close()`
+  },
+  {
+    name: "Functions (Python)",
+    code: `# Define a function and call it.
+def double(n):
+    return n * 2
+
+print(str(double(4)))`
+  },
+  {
+    name: "Classes (Python)",
+    code: `# Create a class with a constructor and a method.
+class Greeter:
+    def __init__(self, who):
+        self.name = who
+
+    def greet(self):
+        return "Hi " + self.name
+
+g = Greeter("Mia")
+print(g.greet())`
+  },
+  {
+    name: "Algorithms",
+    separator: true
+  },
+  {
+    name: "Bubble Sort (Python)",
+    files: [{ path: "unsorted.txt", source: SORT_INPUT_SOURCE_BY_LESSON["Bubble Sort"] }],
+    code: `# Read 100 numbers, bubble sort them, and write sorted.txt.
+values = []
+my_file = openRead("unsorted.txt")
+index = 0
+while not my_file.endOfFile():
+    values[index] = int(my_file.readLine())
+    index = index + 1
+my_file.close()
+
+for current_pass in range(0, 99):
+    for i in range(0, 99 - current_pass):
+        if values[i] > values[i + 1]:
+            temp = values[i]
+            values[i] = values[i + 1]
+            values[i + 1] = temp
+
+sorted_file = openWrite("sorted.txt")
+for i in range(0, 100):
+    sorted_file.writeLine(str(values[i]))
+sorted_file.close()
+
+print(str(values[0]))
+print(str(values[99]))`
+  },
+  {
+    name: "Insertion Sort (Python)",
+    files: [{ path: "unsorted.txt", source: SORT_INPUT_SOURCE_BY_LESSON["Insertion Sort"] }],
+    code: `# Read 100 numbers, insertion sort them, and write sorted.txt.
+values = []
+my_file = openRead("unsorted.txt")
+index = 0
+while not my_file.endOfFile():
+    values[index] = int(my_file.readLine())
+    index = index + 1
+my_file.close()
+
+for i in range(1, 100):
+    key = values[i]
+    j = i - 1
+    while j >= 0 and values[j] > key:
+        values[j + 1] = values[j]
+        j = j - 1
+    values[j + 1] = key
+
+sorted_file = openWrite("sorted.txt")
+for i in range(0, 100):
+    sorted_file.writeLine(str(values[i]))
+sorted_file.close()
+
+print(str(values[0]))
+print(str(values[99]))`
+  },
+  {
+    name: "Merge Sort (Python)",
+    files: [{ path: "unsorted.txt", source: SORT_INPUT_SOURCE_BY_LESSON["Merge Sort"] }],
+    code: `# Read 100 numbers, merge sort them, and write sorted.txt.
+def merge(values, temp, left, mid, right):
+    i = left
+    j = mid + 1
+    k = left
+    while i <= mid and j <= right:
+        if values[i] <= values[j]:
+            temp[k] = values[i]
+            i = i + 1
+        else:
+            temp[k] = values[j]
+            j = j + 1
+        k = k + 1
+    while i <= mid:
+        temp[k] = values[i]
+        i = i + 1
+        k = k + 1
+    while j <= right:
+        temp[k] = values[j]
+        j = j + 1
+        k = k + 1
+    for idx in range(left, right + 1):
+        values[idx] = temp[idx]
+
+def merge_sort(values, temp, left, right):
+    if left < right:
+        mid = int((left + right) / 2)
+        merge_sort(values, temp, left, mid)
+        merge_sort(values, temp, mid + 1, right)
+        merge(values, temp, left, mid, right)
+
+values = []
+temp = []
+my_file = openRead("unsorted.txt")
+index = 0
+while not my_file.endOfFile():
+    values[index] = int(my_file.readLine())
+    temp[index] = 0
+    index = index + 1
+my_file.close()
+
+merge_sort(values, temp, 0, 99)
+
+sorted_file = openWrite("sorted.txt")
+for i in range(0, 100):
+    sorted_file.writeLine(str(values[i]))
+sorted_file.close()
+
+print(str(values[0]))
+print(str(values[99]))`
+  },
+  {
+    name: "Quick Sort (Python)",
+    files: [{ path: "unsorted.txt", source: SORT_INPUT_SOURCE_BY_LESSON["Quick Sort"] }],
+    code: `# Read 100 numbers, quick sort them, and write sorted.txt.
+def partition(values, low, high):
+    pivot = values[high]
+    i = low - 1
+    for j in range(low, high):
+        if values[j] <= pivot:
+            i = i + 1
+            temp = values[i]
+            values[i] = values[j]
+            values[j] = temp
+    temp = values[i + 1]
+    values[i + 1] = values[high]
+    values[high] = temp
+    return i + 1
+
+def quick_sort(values, low, high):
+    if low < high:
+        pivot_index = partition(values, low, high)
+        quick_sort(values, low, pivot_index - 1)
+        quick_sort(values, pivot_index + 1, high)
+
+values = []
+my_file = openRead("unsorted.txt")
+index = 0
+while not my_file.endOfFile():
+    values[index] = int(my_file.readLine())
+    index = index + 1
+my_file.close()
+
+quick_sort(values, 0, 99)
+
+sorted_file = openWrite("sorted.txt")
+for i in range(0, 100):
+    sorted_file.writeLine(str(values[i]))
+sorted_file.close()
+
+print(str(values[0]))
+print(str(values[99]))`
+  },
+  {
+    name: "Linear Search (Python)",
+    files: [{ path: "search.txt", source: SEARCH_INPUT_SOURCE }],
+    code: `# Search a sorted list of vegetables linearly for a target value.
+values = []
+my_file = openRead("search.txt")
+index = 0
+while not my_file.endOfFile():
+    values[index] = my_file.readLine()
+    index = index + 1
+my_file.close()
+
+target = input("Target? ")
+found = False
+index = 0
+while index < 25 and not found:
+    if values[index] == target:
+        found = True
+        print("Found at " + str(index))
+    index = index + 1
+
+if not found:
+    print("Not found")`
+  },
+  {
+    name: "Binary Search (Python)",
+    files: [{ path: "search.txt", source: SEARCH_INPUT_SOURCE }],
+    code: `# Search a sorted list of vegetables by repeatedly halving the range.
+values = []
+my_file = openRead("search.txt")
+index = 0
+while not my_file.endOfFile():
+    values[index] = my_file.readLine()
+    index = index + 1
+my_file.close()
+
+target = input("Target? ")
+low = 0
+high = 24
+found = False
+
+while low <= high and not found:
+    mid = int((low + high) / 2)
+    if values[mid] == target:
+        found = True
+        print("Found at " + str(mid))
+    else:
+        if values[mid] < target:
+            low = mid + 1
+        else:
+            high = mid - 1
+
+if not found:
+    print("Not found")`
+  },
+  {
+    name: "Examples",
+    separator: true
+  },
+  {
+    name: "Battleship (Python)",
+    code: `# Find the hidden ship on a 3x3 grid.
+board = [[".", ".", "."], [".", ".", "."], [".", ".", "."]]
+ship_row = 1
+ship_col = 2
+turn = 0
+hit = False
+
+while turn < 3 and not hit:
+    row_guess = int(input("Row? "))
+    col_guess = int(input("Col? "))
+    if row_guess < 0 or row_guess > 2 or col_guess < 0 or col_guess > 2:
+        print("Out of bounds")
+    elif row_guess == ship_row and col_guess == ship_col:
+        board[row_guess][col_guess] = "X"
+        print("Hit!")
+        hit = True
+    else:
+        board[row_guess][col_guess] = "o"
+        print("Miss")
+    turn = turn + 1
+
+if hit:
+    print("You found the ship.")
+else:
+    print("Game over.")
+
+for row in range(0, 3):
+    line = ""
+    for col in range(0, 3):
+        line = line + board[row][col]
+    print(line)`
+  }
+];
+
+const EXAMPLES = [
+  ...normalizeExamples(OCR_EXAMPLES, "ocr"),
+  { name: "Python", separator: true, language: "python" },
+  ...normalizeExamples(PYTHON_EXAMPLES, "python")
+];
+
+function normalizeExamples(examples, language) {
+  return examples.map((example) => ({
+    ...example,
+    language,
+    exampleKey: toExampleKey(example.name, language)
+  }));
+}
+
+function toExampleKey(name, language) {
+  const raw = String(name || "");
+  if (language === "python") {
+    return raw.replace(/\s+\(Python\)$/, "");
+  }
+  return raw;
+}
+
+function inferPythonArrayDimensions(source) {
+  const text = String(source || "").trim();
+  if (!text.startsWith("[") || !text.endsWith("]")) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(text.replace(/'/g, '"').replace(/\bNone\b/g, "null"));
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    if (!parsed.length || !Array.isArray(parsed[0])) {
+      return [parsed.length];
+    }
+    return [parsed.length, Array.isArray(parsed[0]) ? parsed[0].length : 0];
+  } catch {
+    return [];
+  }
+}
+
 const KEYWORDS = new Set([
   "AND", "OR", "NOT", "MOD", "DIV",
   "TRUE", "FALSE", "NULL", "NEW", "SUPER", "THIS"
@@ -549,6 +1024,7 @@ const app = Vue.createApp({
     return {
       examples: EXAMPLES,
       selectedExample: 0,
+      selectedLanguage: EXAMPLES[0].language || "ocr",
       editorText: EXAMPLES[0].code,
       outputLines: [],
       generatedJs: "",
@@ -660,6 +1136,15 @@ const app = Vue.createApp({
       this.loadExample();
       this.persistState();
     },
+    selectedLanguage() {
+      if (this.restoringState) {
+        return;
+      }
+      this.stopProgram(true);
+      this.showJs = false;
+      this.syncExampleToLanguage();
+      this.persistState();
+    },
     showJs() {
       this.persistState();
     },
@@ -711,6 +1196,7 @@ const app = Vue.createApp({
       const loadToken = ++this.exampleLoadToken;
       this.exampleLoadPromise = (async () => {
         this.clearVirtualFiles(false);
+        this.selectedLanguage = example.language || "ocr";
         this.editorText = example.code;
         if (Array.isArray(example.files) && example.files.length) {
           const files = await this.loadExampleFiles(example.files);
@@ -779,7 +1265,7 @@ const app = Vue.createApp({
 
       let compiled;
       try {
-        compiled = sharedTranslateProgram(this.editorText);
+        compiled = sharedTranslateProgram(this.editorText, { language: this.selectedLanguage });
       } catch (error) {
         this.reportTranslatorError(error);
         return;
@@ -820,6 +1306,23 @@ const app = Vue.createApp({
       }
       return true;
     },
+    syncExampleToLanguage() {
+      const current = this.examples[this.selectedExample];
+      if (!current || current.separator) {
+        return;
+      }
+      if ((current.language || "ocr") === this.selectedLanguage) {
+        return;
+      }
+      const targetIndex = this.examples.findIndex((example) =>
+        !example.separator
+        && example.exampleKey === current.exampleKey
+        && (example.language || "ocr") === this.selectedLanguage
+      );
+      if (targetIndex >= 0) {
+        this.selectedExample = targetIndex;
+      }
+    },
     async runProgram() {
       await this.startProgram({ startPaused: false });
     },
@@ -835,7 +1338,7 @@ const app = Vue.createApp({
     parseTraceOptionDirectives(sourceText) {
       const directives = {};
       for (const line of String(sourceText || "").split(/\r?\n/)) {
-        const match = line.match(/\/\/\s*#(expand_arrays|compress_rows)\s*:\s*(true|false)\b/i);
+        const match = line.match(/(?:\/\/|#)\s*#(expand_arrays|compress_rows)\s*:\s*(true|false)\b/i);
         if (!match) {
           continue;
         }
@@ -1173,8 +1676,11 @@ const app = Vue.createApp({
         return false;
       }
       const sourceLine = this.editorText.split(/\r?\n/)[lineNumber - 1] || "";
-      const code = sourceLine.replace(/\/\/.*$/, "").trim();
-      return /^(ENDWHILE|NEXT|UNTIL)\b/i.test(code) || /^ARRAY\s+[A-Za-z][A-Za-z0-9_]*\s*\[[^\]]+\]\s*=/i.test(code);
+      const code = sourceLine.replace(/\/\/.*$/, "").replace(/#.*$/, "").trim();
+      return /^(ENDWHILE|NEXT|UNTIL)\b/i.test(code)
+        || /^ARRAY\s+[A-Za-z][A-Za-z0-9_]*\s*\[[^\]]+\]\s*=/i.test(code)
+        || /^(while|for)\b.+:\s*$/i.test(code)
+        || /^[A-Za-z_][A-Za-z0-9_]*\s*=\s*\[/.test(code);
     },
     extractInitialTraceColumns(jsCode) {
       const hiddenVariables = new Set();
@@ -1238,9 +1744,21 @@ const app = Vue.createApp({
     extractSourceArrayDeclarations(sourceText) {
       const declarations = [];
       for (const line of String(sourceText || "").split(/\r?\n/)) {
-        const code = line.replace(/\/\/.*$/, "").trim();
+        const code = line.replace(/\/\/.*$/, "").replace(/#.*$/, "").trim();
         const match = code.match(/^ARRAY\s+([A-Za-z][A-Za-z0-9_]*)\s*\[([^\]]+)\]/i);
         if (!match) {
+          const pythonMatch = code.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(\[[\s\S]*\])$/);
+          if (!pythonMatch) {
+            continue;
+          }
+          const dimensions = inferPythonArrayDimensions(pythonMatch[2]);
+          if (!dimensions.length) {
+            continue;
+          }
+          declarations.push({
+            name: pythonMatch[1],
+            dimensions
+          });
           continue;
         }
         declarations.push({
@@ -1649,6 +2167,7 @@ const app = Vue.createApp({
         editorText: this.editorText,
         selectedExample: this.selectedExample,
         selectedExampleName: this.examples[this.selectedExample]?.name || "",
+        selectedLanguage: this.selectedLanguage,
         showJs: this.showJs,
         showVirtualFs: this.showVirtualFs,
         showTraceTable: this.showTraceTable,
@@ -1669,12 +2188,18 @@ const app = Vue.createApp({
         }
         const state = JSON.parse(raw);
         if (typeof state.selectedExampleName === "string") {
-          const byName = this.examples.findIndex((example) => example.name === state.selectedExampleName);
+          const byName = this.examples.findIndex((example) =>
+            example.name === state.selectedExampleName
+            && (!state.selectedLanguage || (example.language || "ocr") === state.selectedLanguage)
+          );
           if (byName >= 0) {
             this.selectedExample = this.resolveSelectableExampleIndex(byName);
           }
         } else if (Number.isInteger(state.selectedExample)) {
           this.selectedExample = this.resolveSelectableExampleIndex(state.selectedExample);
+        }
+        if (typeof state.selectedLanguage === "string") {
+          this.selectedLanguage = state.selectedLanguage === "python" ? "python" : "ocr";
         }
         if (typeof state.editorText === "string") {
           this.editorText = state.editorText;

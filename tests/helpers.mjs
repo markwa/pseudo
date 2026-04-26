@@ -2,16 +2,16 @@ import { readFileSync } from "node:fs";
 
 import { translateProgram } from "../translator.js";
 
-export function loadFixture(name) {
-  return readFileSync(new URL(`./fixtures/${name}.ocr`, import.meta.url), "utf8");
+export function loadFixture(name, language = "ocr") {
+  return readFileSync(new URL(`./fixtures/${name}.${language === "python" ? "py" : "ocr"}`, import.meta.url), "utf8");
 }
 
-export function translateSource(source) {
-  return translateProgram(source);
+export function translateSource(source, options = {}) {
+  return translateProgram(source, options);
 }
 
-export async function runSource(source, runtimeOverrides = {}) {
-  const { js, lineMap } = translateProgram(source);
+export async function runSource(source, runtimeOverrides = {}, options = {}) {
+  const { js, lineMap } = translateProgram(source, options);
   const output = [];
   const files = new Map();
   const inputQueue = [...(runtimeOverrides.inputs || [])];
