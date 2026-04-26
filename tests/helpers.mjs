@@ -33,7 +33,9 @@ export async function runSource(source, runtimeOverrides = {}) {
       return String(inputQueue.shift());
     },
     openRead: async (path) => makeReader(files, path),
-    openWrite: async (path) => makeWriter(files, path)
+    openWrite: async (path) => makeWriter(files, path),
+    trackVar: (name, value) => value,
+    traceStep: async () => {}
   };
 
   const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;

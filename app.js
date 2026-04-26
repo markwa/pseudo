@@ -555,7 +555,13 @@ const app = Vue.createApp({
       lineMap: [],
       showJs: false,
       showVirtualFs: false,
+      showTraceTable: true,
       running: false,
+      debugPaused: false,
+      currentPseudoLine: 0,
+      traceRows: [],
+      traceColumns: [],
+      lastTraceSnapshot: null,
       promptActive: false,
       promptText: "",
       inputValue: "",
@@ -576,6 +582,21 @@ const app = Vue.createApp({
     },
     selectedVirtualFile() {
       return this.virtualFiles.find((file) => file.path === this.selectedVirtualFilePath) || null;
+    },
+    canStep() {
+      if (this.promptActive) {
+        return false;
+      }
+      if (!this.running) {
+        return true;
+      }
+      return this.debugPaused;
+    },
+    canContinue() {
+      return this.running && this.debugPaused && !this.promptActive;
+    },
+    canPause() {
+      return this.running && !this.debugPaused;
     }
   },
   watch: {
@@ -607,6 +628,9 @@ const app = Vue.createApp({
       this.persistState();
     },
     showVirtualFs() {
+      this.persistState();
+    },
+    showTraceTable() {
       this.persistState();
     }
   },
@@ -699,10 +723,13 @@ const app = Vue.createApp({
       }
       return loaded;
     },
-    async runProgram() {
+    async startProgram(options = {}) {
+      const startPaused = !!options.startPaused;
+      const initialControl = typeof options.initialControl === "string" ? options.initialControl : "";
       await this.exampleLoadPromise;
       this.stopProgram(false);
       this.outputLines = [];
+      this.resetDebugState();
       this.terminalStatus = "Translating";
       this.scrollTerminalToBottom();
 
@@ -718,7 +745,8 @@ const app = Vue.createApp({
       this.lineMap = compiled.lineMap;
 
       this.running = true;
-      this.terminalStatus = "Running";
+      this.debugPaused = startPaused;
+      this.terminalStatus = startPaused ? "Running (paused)" : "Running";
       this.promptActive = false;
       this.promptText = "";
       this.inputValue = "";
@@ -733,8 +761,19 @@ const app = Vue.createApp({
       worker.postMessage({
         type: "run",
         jsCode: compiled.js,
-        lineMap: compiled.lineMap
+        lineMap: compiled.lineMap,
+        debug: {
+          enabled: true,
+          startPaused
+        }
       });
+      if (initialControl) {
+        worker.postMessage({ type: "debug-control", action: initialControl });
+      }
+      return true;
+    },
+    async runProgram() {
+      await this.startProgram({ startPaused: false });
     },
     stopProgram(showMessage = true) {
       if (this.worker) {
@@ -748,9 +787,47 @@ const app = Vue.createApp({
       this.promptText = "";
       this.inputValue = "";
       this.running = false;
+      this.debugPaused = false;
+      this.currentPseudoLine = 0;
       this.terminalStatus = "Idle";
       if (showMessage) {
         this.appendLine("Run stopped.", "info");
+      }
+    },
+    resetDebugState() {
+      this.debugPaused = false;
+      this.currentPseudoLine = 0;
+      this.traceRows = [];
+      this.traceColumns = [];
+      this.lastTraceSnapshot = null;
+    },
+    async stepProgram() {
+      if (!this.running) {
+        await this.startProgram({
+          startPaused: true,
+          initialControl: "step"
+        });
+        return;
+      }
+      this.sendDebugControl("step");
+    },
+    continueProgram() {
+      this.sendDebugControl("continue");
+    },
+    pauseProgram() {
+      this.sendDebugControl("pause");
+    },
+    sendDebugControl(action) {
+      if (!this.worker || !this.running) {
+        return;
+      }
+      this.worker.postMessage({ type: "debug-control", action });
+      if (action === "continue" || action === "step") {
+        this.debugPaused = false;
+        this.terminalStatus = "Running";
+      } else if (action === "pause") {
+        this.debugPaused = true;
+        this.terminalStatus = "Running (paused)";
       }
     },
     submitInput() {
@@ -774,6 +851,10 @@ const app = Vue.createApp({
       }
       if (message.type === "fs-state") {
         this.setVirtualFiles(message.files);
+        return;
+      }
+      if (message.type === "trace-step") {
+        this.handleTraceStep(message);
         return;
       }
       if (message.type === "prompt") {
@@ -802,10 +883,205 @@ const app = Vue.createApp({
         this.worker = null;
       }
       this.running = false;
+      this.debugPaused = false;
       this.promptActive = false;
       this.inputValue = "";
       this.pendingPromptResolver = null;
       this.terminalStatus = completed ? "Completed" : "Idle";
+    },
+    handleTraceStep(message) {
+      const pseudoLine = Number(message.pseudoLine) || 0;
+      const snapshot = this.cloneTraceSnapshot(message.snapshot && typeof message.snapshot === "object" ? message.snapshot : {});
+      const stepIndex = Number(message.stepIndex) || this.traceRows.length + 1;
+      this.currentPseudoLine = pseudoLine;
+      this.debugPaused = !!message.paused;
+      this.terminalStatus = this.debugPaused ? "Running (paused)" : "Running";
+      this.updateTraceColumns(snapshot);
+      const previousSnapshot = this.lastTraceSnapshot;
+      const row = {
+        step: stepIndex,
+        line: pseudoLine,
+        snapshot,
+        previousSnapshot,
+        changes: this.buildTraceChanges(previousSnapshot, snapshot)
+      };
+      this.lastTraceSnapshot = snapshot;
+      if (this.traceRowHasVisibleChange(row)) {
+        this.traceRows.push(row);
+      }
+      this.scrollEditorToLine(pseudoLine);
+    },
+    updateTraceColumns(snapshot) {
+      const nextColumns = new Set(this.traceColumns);
+      for (const key of Object.keys(snapshot || {})) {
+        nextColumns.add(key);
+      }
+      this.traceColumns = Array.from(nextColumns).sort((left, right) => left.localeCompare(right));
+    },
+    formatTraceCell(row, column) {
+      if (!row || !row.snapshot || !(column in row.snapshot)) {
+        return "";
+      }
+      const value = row.snapshot[column];
+      if (this.isTraceContainer(value) && row.changes && Object.prototype.hasOwnProperty.call(row.changes, column)) {
+        return row.changes[column];
+      }
+      const previousValue = this.previousTraceValue(row, column);
+      if (this.hasPreviousTraceValue(row, column) && this.isTraceValueEqual(previousValue, value)) {
+        return "";
+      }
+      if (this.isTraceContainer(value) && this.isTraceContainer(previousValue)) {
+        const changes = this.collectTraceValueChanges(previousValue, value, "");
+        return changes.join(", ");
+      }
+      return this.formatTraceValue(value);
+    },
+    formatTraceLine(row) {
+      if (!this.traceRowHasVisibleChange(row)) {
+        return "";
+      }
+      return row && row.line ? String(row.line) : "";
+    },
+    traceRowHasVisibleChange(row) {
+      if (!row || !row.snapshot) {
+        return false;
+      }
+      return this.traceColumns.some((column) => this.formatTraceCell(row, column) !== "");
+    },
+    cloneTraceSnapshot(snapshot) {
+      try {
+        return JSON.parse(JSON.stringify(snapshot || {}));
+      } catch {
+        return {};
+      }
+    },
+    buildTraceChanges(previousSnapshot, snapshot) {
+      const changesByColumn = {};
+      if (!previousSnapshot || typeof previousSnapshot !== "object") {
+        return changesByColumn;
+      }
+      for (const column of Object.keys(snapshot || {})) {
+        const value = snapshot[column];
+        const previousValue = previousSnapshot[column];
+        if (this.isTraceContainer(value) && this.isTraceContainer(previousValue)) {
+          changesByColumn[column] = this.collectTraceValueChanges(previousValue, value, "").join(", ");
+        }
+      }
+      return changesByColumn;
+    },
+    hasPreviousTraceValue(row, column) {
+      if (row.previousSnapshot && typeof row.previousSnapshot === "object") {
+        return Object.prototype.hasOwnProperty.call(row.previousSnapshot, column);
+      }
+      const rowIndex = this.traceRows.indexOf(row);
+      if (rowIndex <= 0) {
+        return false;
+      }
+      const previousRow = this.traceRows[rowIndex - 1];
+      return !!(previousRow && previousRow.snapshot && Object.prototype.hasOwnProperty.call(previousRow.snapshot, column));
+    },
+    previousTraceValue(row, column) {
+      if (row.previousSnapshot && typeof row.previousSnapshot === "object") {
+        return row.previousSnapshot[column];
+      }
+      const rowIndex = this.traceRows.indexOf(row);
+      if (rowIndex <= 0) {
+        return undefined;
+      }
+      const previousRow = this.traceRows[rowIndex - 1];
+      if (!previousRow || !previousRow.snapshot || !(column in previousRow.snapshot)) {
+        return undefined;
+      }
+      return previousRow.snapshot[column];
+    },
+    formatTraceValue(value) {
+      if (value === null) {
+        return "null";
+      }
+      if (typeof value === "string") {
+        return JSON.stringify(value);
+      }
+      if (typeof value === "number" || typeof value === "boolean") {
+        return String(value);
+      }
+      try {
+        return JSON.stringify(value);
+      } catch {
+        return String(value);
+      }
+    },
+    formatTraceChangeValue(value) {
+      if (value === undefined) {
+        return "undefined";
+      }
+      if (Array.isArray(value)) {
+        return `[${value.map((entry) => this.formatTraceChangeValue(entry)).join(",")}]`;
+      }
+      return this.formatTraceValue(value);
+    },
+    isTraceContainer(value) {
+      return value !== null && typeof value === "object";
+    },
+    isTraceValueEqual(left, right) {
+      if (Object.is(left, right)) {
+        return true;
+      }
+      if (!this.isTraceContainer(left) || !this.isTraceContainer(right)) {
+        return false;
+      }
+      if (Array.isArray(left) !== Array.isArray(right)) {
+        return false;
+      }
+      if (Array.isArray(left)) {
+        if (left.length !== right.length) {
+          return false;
+        }
+        return left.every((entry, index) => this.isTraceValueEqual(entry, right[index]));
+      }
+      const leftKeys = Object.keys(left);
+      const rightKeys = Object.keys(right);
+      if (leftKeys.length !== rightKeys.length) {
+        return false;
+      }
+      return leftKeys.every((key) => Object.prototype.hasOwnProperty.call(right, key) && this.isTraceValueEqual(left[key], right[key]));
+    },
+    collectTraceValueChanges(previousValue, value, path) {
+      if (this.isTraceValueEqual(previousValue, value)) {
+        return [];
+      }
+      if (!this.isTraceContainer(previousValue) || !this.isTraceContainer(value) || Array.isArray(previousValue) !== Array.isArray(value)) {
+        return [`${path || "value"} = ${this.formatTraceChangeValue(value)}`];
+      }
+      if (Array.isArray(value)) {
+        const changes = [];
+        const maxLength = Math.max(previousValue.length, value.length);
+        for (let index = 0; index < maxLength; index += 1) {
+          if (!this.isTraceValueEqual(previousValue[index], value[index])) {
+            const nextPath = `${path}[${index}]`;
+            if (Array.isArray(previousValue[index]) && Array.isArray(value[index]) && this.isWholeTraceArrayChanged(previousValue[index], value[index])) {
+              changes.push(`${nextPath} = ${this.formatTraceChangeValue(value[index])}`);
+              continue;
+            }
+            changes.push(...this.collectTraceValueChanges(previousValue[index], value[index], nextPath));
+          }
+        }
+        return changes;
+      }
+      const changes = [];
+      const keys = Array.from(new Set([...Object.keys(previousValue), ...Object.keys(value)])).sort((left, right) => left.localeCompare(right));
+      for (const key of keys) {
+        if (!this.isTraceValueEqual(previousValue[key], value[key])) {
+          const nextPath = path ? `${path}.${key}` : key;
+          changes.push(...this.collectTraceValueChanges(previousValue[key], value[key], nextPath));
+        }
+      }
+      return changes;
+    },
+    isWholeTraceArrayChanged(previousValue, value) {
+      if (!Array.isArray(previousValue) || !Array.isArray(value) || previousValue.length !== value.length || !value.length) {
+        return false;
+      }
+      return value.every((entry, index) => !this.isTraceValueEqual(previousValue[index], entry));
     },
     reportTranslatorError(error) {
       this.outputLines.push({ kind: "error", text: formatTranslatorError(error) });
@@ -839,6 +1115,23 @@ const app = Vue.createApp({
       const gutter = this.$refs.gutterScroll;
       if (gutter) {
         gutter.scrollTop = event.target.scrollTop;
+      }
+    },
+    scrollEditorToLine(lineNumber) {
+      if (!Number.isInteger(lineNumber) || lineNumber <= 0) {
+        return;
+      }
+      const editor = this.$refs.editorArea;
+      const gutter = this.$refs.gutterScroll;
+      if (!editor) {
+        return;
+      }
+      const style = window.getComputedStyle(editor);
+      const lineHeight = Number.parseFloat(style.lineHeight) || 24;
+      const targetTop = Math.max(0, (lineNumber - 1) * lineHeight - editor.clientHeight / 2);
+      editor.scrollTop = targetTop;
+      if (gutter) {
+        gutter.scrollTop = targetTop;
       }
     },
     openVirtualFsUpload() {
@@ -960,6 +1253,7 @@ const app = Vue.createApp({
         selectedExampleName: this.examples[this.selectedExample]?.name || "",
         showJs: this.showJs,
         showVirtualFs: this.showVirtualFs,
+        showTraceTable: this.showTraceTable,
         virtualFiles: this.serializeVirtualFiles(),
         selectedVirtualFilePath: this.selectedVirtualFilePath
       };
@@ -991,6 +1285,9 @@ const app = Vue.createApp({
         if (typeof state.showVirtualFs === "boolean") {
           this.showVirtualFs = state.showVirtualFs;
         }
+        if (typeof state.showTraceTable === "boolean") {
+          this.showTraceTable = state.showTraceTable;
+        }
         if (Array.isArray(state.virtualFiles)) {
           this.virtualFiles = normalizeVirtualFiles(state.virtualFiles);
         }
@@ -1013,6 +1310,13 @@ function createRunnerWorker(initialFiles = []) {
   const workerSource = `
     const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
     let pendingInput = null;
+    let pendingDebugResume = null;
+    const debugState = {
+      enabled: false,
+      mode: "continue",
+      stepIndex: 0
+    };
+    const trackedVars = new Map();
     const fs = new Map(${JSON.stringify(initialFiles)}.map((file) => [file.path, Array.isArray(file.lines) ? [...file.lines] : []]));
 
     function post(type, payload = {}) {
@@ -1038,10 +1342,84 @@ function createRunnerWorker(initialFiles = []) {
       return text === "" ? [] : text.split("\\n");
     }
 
+    function resolveDebugWait() {
+      if (!pendingDebugResume) {
+        return;
+      }
+      const resolve = pendingDebugResume;
+      pendingDebugResume = null;
+      resolve();
+    }
+
+    function waitForDebugCommand() {
+      return new Promise((resolve) => {
+        pendingDebugResume = resolve;
+      });
+    }
+
+    function setDebugMode(mode) {
+      debugState.mode = mode;
+      if (mode !== "paused") {
+        resolveDebugWait();
+      }
+    }
+
+    function serializeTraceValue(value, depth = 0) {
+      if (value === null || value === undefined) {
+        return value === undefined ? null : value;
+      }
+      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        return value;
+      }
+      if (typeof value === "function") {
+        return "[Function]";
+      }
+      if (value && typeof value.__traceLabel === "string") {
+        return value.__traceLabel;
+      }
+      if (depth >= 2) {
+        return Array.isArray(value) ? \`Array(\${value.length})\` : "[Object]";
+      }
+      if (Array.isArray(value)) {
+        return value.slice(0, 20).map((entry) => serializeTraceValue(entry, depth + 1));
+      }
+      if (typeof value === "object") {
+        const keys = Object.keys(value).slice(0, 20);
+        if (keys.length && keys.every((key) => typeof value[key] === "function")) {
+          return "[Object]";
+        }
+        const result = {};
+        for (const key of keys) {
+          result[key] = serializeTraceValue(value[key], depth + 1);
+        }
+        return result;
+      }
+      return toText(value);
+    }
+
+    function isTraceHiddenValue(value) {
+      return !!(value && typeof value === "object" && value.__traceHidden);
+    }
+
+    function snapshotTrackedVars() {
+      const snapshot = {};
+      const keys = Array.from(trackedVars.keys()).sort((left, right) => left.localeCompare(right));
+      for (const key of keys) {
+        const value = trackedVars.get(key);
+        if (isTraceHiddenValue(value)) {
+          continue;
+        }
+        snapshot[key] = serializeTraceValue(value, 0);
+      }
+      return snapshot;
+    }
+
     function makeReader(path) {
       const source = fs.get(path) || [];
       let index = 0;
       return {
+        __traceHidden: true,
+        __traceLabel: "[File]",
         async readLine() {
           return index < source.length ? source[index++] : "";
         },
@@ -1057,6 +1435,8 @@ function createRunnerWorker(initialFiles = []) {
       fs.set(path, buffer);
       syncFiles();
       return {
+        __traceHidden: true,
+        __traceLabel: "[File]",
         async writeLine(value) {
           buffer.push(toText(value));
           syncFiles();
@@ -1097,6 +1477,30 @@ function createRunnerWorker(initialFiles = []) {
       openWrite: async (path) => {
         const filename = toText(path);
         return makeWriter(filename);
+      },
+      trackVar: (name, value) => {
+        const key = toText(name);
+        trackedVars.set(key, value);
+        return value;
+      },
+      traceStep: async (pseudoLine) => {
+        if (!debugState.enabled) {
+          return;
+        }
+        const line = Number(pseudoLine) || 0;
+        debugState.stepIndex += 1;
+        post("trace-step", {
+          stepIndex: debugState.stepIndex,
+          pseudoLine: line,
+          snapshot: snapshotTrackedVars(),
+          paused: debugState.mode === "paused"
+        });
+        while (debugState.mode === "paused") {
+          await waitForDebugCommand();
+        }
+        if (debugState.mode === "step") {
+          debugState.mode = "paused";
+        }
       }
     };
 
@@ -1127,11 +1531,30 @@ function createRunnerWorker(initialFiles = []) {
         return;
       }
 
+      if (data.type === "debug-control") {
+        const action = toText(data.action).toLowerCase();
+        if (action === "step") {
+          setDebugMode("step");
+        } else if (action === "continue") {
+          setDebugMode("continue");
+        } else if (action === "pause") {
+          setDebugMode("paused");
+        } else if (action === "stop") {
+          setDebugMode("paused");
+        }
+        return;
+      }
+
       if (data.type !== "run") {
         return;
       }
 
       pendingInput = null;
+      pendingDebugResume = null;
+      trackedVars.clear();
+      debugState.stepIndex = 0;
+      debugState.enabled = !!(data.debug && data.debug.enabled);
+      debugState.mode = data.debug && data.debug.startPaused ? "paused" : "continue";
       if (Array.isArray(data.files)) {
         fs.clear();
         for (const file of data.files) {

@@ -24,6 +24,15 @@
         <button class="btn primary btn-compact" @click="runProgram" :disabled="running">
           <i class="bi bi-play-fill" aria-hidden="true"></i><span>Run</span>
         </button>
+        <button class="btn btn-compact" @click="stepProgram" :disabled="!canStep">
+          <i class="bi bi-skip-forward" aria-hidden="true"></i><span>Step</span>
+        </button>
+        <button class="btn btn-compact" @click="continueProgram" :disabled="!canContinue">
+          <i class="bi bi-fast-forward" aria-hidden="true"></i><span>Continue</span>
+        </button>
+        <button class="btn btn-compact" @click="pauseProgram" :disabled="!canPause">
+          <i class="bi bi-pause-fill" aria-hidden="true"></i><span>Pause</span>
+        </button>
         <button class="btn btn-compact" @click="stopProgram">
           <i class="bi bi-stop-fill" aria-hidden="true"></i><span>Reset</span>
         </button>
@@ -51,9 +60,13 @@
         <template v-if="!showJs">
           <div class="editor-shell">
             <div class="line-gutter" ref="gutterScroll" aria-hidden="true">
-              <div v-for="n in editorLineCount" :key="n">{{ n }}</div>
+              <div v-for="n in editorLineCount" :key="n" :class="{ active: n === currentPseudoLine }">
+                <span class="line-marker" aria-hidden="true">{{ n === currentPseudoLine ? '▶' : '' }}</span>
+                <span>{{ n }}</span>
+              </div>
             </div>
             <textarea
+              ref="editorArea"
               v-model="editorText"
               @scroll="syncEditorScroll"
               spellcheck="false"
@@ -136,6 +149,35 @@
               <pre class="filesystem-preview">{{ selectedVirtualFile ? formatVirtualFile(selectedVirtualFile) : 'Select a file to preview it.' }}</pre>
             </div>
           </section>
+
+        </div>
+      </section>
+
+      <section v-if="showTraceTable" class="trace-viewer" aria-label="Execution trace table">
+        <div class="trace-head">
+          <h3>Trace Table</h3>
+          <p class="trace-summary">{{ traceRows.length }} step{{ traceRows.length === 1 ? '' : 's' }}</p>
+        </div>
+        <div class="trace-table-wrap">
+          <table class="trace-table">
+            <thead>
+              <tr>
+                <th>Line</th>
+                <th v-for="column in traceColumns" :key="column">{{ column }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in traceRows" :key="row.step">
+                <td>{{ formatTraceLine(row) }}</td>
+                <td v-for="column in traceColumns" :key="column">
+                  <span class="trace-cell-content">{{ formatTraceCell(row, column) }}</span>
+                </td>
+              </tr>
+              <tr v-if="!traceRows.length">
+                <td class="trace-empty" :colspan="1 + traceColumns.length">Run a program and step through it to build the trace table.</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </section>
     </main>

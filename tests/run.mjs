@@ -86,7 +86,8 @@ const cases = [
     const source = loadFixture("loops_switch");
     const { js, output } = await runSource(source, { inputs: ["x", "computer", "computer"] });
 
-    assert.match(js, /for \(var i = 0; i <= 2; i\+\+\)/);
+    assert.match(js, /var i = 0; __runtime\.trackVar\("i", i\);/);
+    assert.match(js, /for \(; i <= 2; i\+\+, __runtime\.trackVar\("i", i\)\)/);
     assert.match(js, /while \(\(answer != "computer"\)\)/);
     assert.match(js, /switch \(answer\)/);
     assert.deepEqual(output, ["Loop 0", "Loop 1", "Loop 2", "Unlocked"]);
@@ -114,8 +115,9 @@ const cases = [
     const source = `// leading comment\nprint(“hello”) // trailing comment`;
     const { js, lineMap } = translateSource(source);
 
-    assert.equal(js.trim(), 'await __runtime.print("hello");');
-    assert.deepEqual(lineMap, [2]);
+    assert.match(js, /await __runtime\.print\("hello"\);/);
+    assert.match(js, /await __runtime\.traceStep\(2\);/);
+    assert.deepEqual(lineMap, [2, 2]);
   }],
   ["translated JavaScript is indented for nested blocks", () => {
     const source = [
@@ -125,13 +127,22 @@ const cases = [
     ].join("\n");
     const { js } = translateSource(source);
 
-    assert.match(js, /if \(true\) \{\n  await __runtime\.print\("x"\);\n\}/);
+    assert.match(js, /if \(true\) \{/);
+    assert.match(js, /await __runtime\.print\("x"\);/);
   }],
   ["mapped source lines preserve the original pseudocode line numbers", () => {
     const source = `print("one")\nprint("two")\nprint("three")`;
     const { lineMap } = translateSource(source);
 
-    assert.deepEqual(lineMap, [1, 2, 3]);
+    assert.deepEqual(lineMap, [1, 1, 2, 2, 3, 3]);
+  }],
+  ["translator adds trace checkpoints and tracked-variable updates", () => {
+    const source = ["x = 1", "x = x + 1", "print(str(x))"].join("\n");
+    const { js } = translateSource(source);
+
+    assert.match(js, /__runtime\.trackVar\("x", x\)/);
+    assert.match(js, /await __runtime\.traceStep\(1\);/);
+    assert.match(js, /await __runtime\.traceStep\(3\);/);
   }],
   ["missing endif is reported with the opening line number", () => {
     assert.throws(
@@ -564,7 +575,8 @@ const cases = [
     ].join("\n");
     const { js, output } = await runSource(source);
 
-    assert.match(js, /var i = 3; i >= 1; i--/);
+    assert.match(js, /var i = 3; __runtime\.trackVar\("i", i\);/);
+    assert.match(js, /for \(; i >= 1; i--, __runtime\.trackVar\("i", i\)\)/);
     assert.deepEqual(output, ["3", "2", "1"]);
   }],
 
@@ -1235,6 +1247,179 @@ const cases = [
       globalThis.localStorage = originalLocalStorage;
       globalThis.fetch = originalFetch;
     }
+  }],
+
+  ["trace table formats object and list updates as changed elements", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options);
+    const firstRow = {
+      step: 1,
+      line: 1,
+      snapshot: {
+        person: { name: "oldname", score: 10 },
+        list: [1, 2, 3],
+        board: [[0, 0], [0, 0]]
+      }
+    };
+    const secondRow = {
+      step: 2,
+      line: 2,
+      previousSnapshot: firstRow.snapshot,
+      snapshot: {
+        person: { name: "newname", score: 10 },
+        list: [1, 2, 5],
+        board: [[0, 0], [0, 9]]
+      }
+    };
+    const thirdRow = {
+      step: 3,
+      line: 3,
+      previousSnapshot: secondRow.snapshot,
+      snapshot: {
+        person: { name: "newname", score: 10 },
+        list: [1, 2, 5],
+        board: [[0, 0], [0, 9]]
+      }
+    };
+    const battleshipRow = {
+      step: 4,
+      line: 4,
+      previousSnapshot: {
+        board: [[null, null, null], [null, null, null], [null, null, null]]
+      },
+      snapshot: {
+        board: [[".", ".", "."], [null, null, null], [null, null, null]]
+      }
+    };
+    app.traceRows = [firstRow, secondRow, thirdRow, battleshipRow];
+
+    assert.equal(app.formatTraceCell(secondRow, "person"), 'name = "newname"');
+    assert.equal(app.formatTraceCell(secondRow, "list"), "[2] = 5");
+    assert.equal(app.formatTraceCell(secondRow, "board"), "[1][1] = 9");
+    assert.equal(app.formatTraceCell(thirdRow, "board"), "");
+    assert.equal(
+      app.formatTraceCell(battleshipRow, "board"),
+      '[0] = [".",".","."]'
+    );
+  }],
+
+  ["trace table keeps list diffs from runtime snapshots", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options);
+    const snapshots = [
+      {
+        board: [[null, null, null], [null, null, null], [null, null, null]]
+      },
+      {
+        board: [[null, null, null], [null, null, null], [null, null, null]],
+        row: 0
+      },
+      {
+        board: [[".", ".", "."], [null, null, null], [null, null, null]],
+        col: 3,
+        row: 1
+      },
+      {
+        board: [[".", ".", "."], [".", ".", "."], [null, null, null]],
+        col: 3,
+        row: 2
+      }
+    ];
+
+    snapshots.forEach((snapshot, index) => {
+      app.handleTraceStep({
+        pseudoLine: index + 1,
+        snapshot,
+        stepIndex: index + 1,
+        paused: false
+      });
+    });
+
+    assert.equal(app.traceRows.length, 4);
+    assert.equal(app.formatTraceCell(app.traceRows[1], "board"), "");
+    assert.equal(
+      app.formatTraceCell(app.traceRows[2], "board"),
+      '[0] = [".",".","."]'
+    );
+    assert.equal(
+      app.formatTraceCell(app.traceRows[3], "board"),
+      '[1] = [".",".","."]'
+    );
+  }],
+
+  ["trace table leaves unchanged scalar values blank", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options);
+    const snapshots = [
+      { whole: 7 },
+      { whole: 7, decimal: 3.5 },
+      { whole: 7, decimal: 3.5 },
+      { whole: 7, decimal: 3.5 }
+    ];
+
+    snapshots.forEach((snapshot, index) => {
+      app.handleTraceStep({
+        pseudoLine: index + 2,
+        snapshot,
+        stepIndex: index + 1,
+        paused: false
+      });
+    });
+
+    assert.equal(app.traceRows.length, 2);
+    assert.deepEqual(app.traceRows.map((row) => row.line), [2, 3]);
+    assert.equal(app.formatTraceCell(app.traceRows[0], "whole"), "7");
+    assert.equal(app.formatTraceCell(app.traceRows[1], "whole"), "");
+    assert.equal(app.formatTraceCell(app.traceRows[1], "decimal"), "3.5");
+    assert.equal(app.formatTraceLine(app.traceRows[0]), "2");
+    assert.equal(app.formatTraceLine(app.traceRows[1]), "3");
+  }],
+
+  ["trace table quotes string scalar values", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options);
+
+    app.handleTraceStep({
+      pseudoLine: 1,
+      snapshot: { name: "Ada" },
+      stepIndex: 1,
+      paused: false
+    });
+
+    assert.equal(app.formatTraceCell(app.traceRows[0], "name"), '"Ada"');
+  }],
+
+  ["trace table uses skipped rows as the next diff baseline", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options);
+    const snapshots = [
+      { count: 1, total: 1 },
+      { count: 1, total: 1 },
+      { count: 2, total: 1 }
+    ];
+
+    snapshots.forEach((snapshot, index) => {
+      app.handleTraceStep({
+        pseudoLine: index + 1,
+        snapshot,
+        stepIndex: index + 1,
+        paused: false
+      });
+    });
+
+    assert.equal(app.traceRows.length, 2);
+    assert.deepEqual(app.traceRows.map((row) => row.line), [1, 3]);
+    assert.equal(app.formatTraceCell(app.traceRows[1], "count"), "2");
+    assert.equal(app.formatTraceCell(app.traceRows[1], "total"), "");
+  }],
+
+  ["trace serialization excludes virtual file handles", () => {
+    const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
+
+    assert.match(appSource, /function isTraceHiddenValue\(value\)/);
+    assert.match(appSource, /if \(isTraceHiddenValue\(value\)\) \{[\s\S]*continue;/);
+    assert.match(appSource, /__traceHidden: true/);
+    assert.match(appSource, /__traceLabel: "\[File\]"/);
   }],
 
   ["sorting examples write sorted.txt in ascending order", async () => {

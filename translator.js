@@ -11,9 +11,10 @@ export function translateProgram(source) {
     classStack: []
   };
   const result = translateStatements(lines, 0, null, ctx);
+  const instrumented = instrumentDebugTrace(result.lines, result.lineMap, lines);
   return {
-    js: formatGeneratedJs(result.lines).join("\n"),
-    lineMap: result.lineMap
+    js: formatGeneratedJs(instrumented.lines).join("\n"),
+    lineMap: instrumented.lineMap
   };
 }
 
@@ -146,8 +147,9 @@ function translateStatements(lines, startIndex, terminators, ctx) {
       const descending = !isNaN(startNum) && !isNaN(endNum) && startNum > endNum;
       const cmp = descending ? ">=" : "<=";
       const inc = descending ? "--" : "++";
-      emit(output, lineMap, originalLineNumber, `for (var ${variable} = ${startCode}; ${variable} ${cmp} ${endCode}; ${variable}${inc}) {`);
       currentScope.declared.add(variable);
+      emit(output, lineMap, originalLineNumber, `var ${variable} = ${startCode}; ${buildTrackVarExpression(variable)};`);
+      emit(output, lineMap, originalLineNumber, `for (; ${variable} ${cmp} ${endCode}; ${variable}${inc}, ${buildTrackVarExpression(variable)}) {`);
       const inner = translateStatements(lines, i + 1, [/^next\b/i], ctx);
       output.push(...inner.lines);
       lineMap.push(...inner.lineMap);
@@ -212,7 +214,12 @@ function translateStatements(lines, startIndex, terminators, ctx) {
         throw syntaxError("Invalid global declaration", originalLineNumber);
       }
       const [, varName, valueExpr] = globalMatch;
-      emit(output, lineMap, originalLineNumber, `globalThis.${varName} = ${emitExpression(valueExpr, ctx, true, classContext, originalLineNumber)};`);
+      emit(
+        output,
+        lineMap,
+        originalLineNumber,
+        `globalThis.${varName} = ${emitExpression(valueExpr, ctx, true, classContext, originalLineNumber)}; ${buildTrackVarExpression(varName, `globalThis.${varName}`)};`
+      );
       i += 1;
       continue;
     }
@@ -233,7 +240,7 @@ function translateStatements(lines, startIndex, terminators, ctx) {
         throw syntaxError("Only one- and two-dimensional arrays are supported", originalLineNumber);
       }
       currentScope.declared.add(name);
-      emit(output, lineMap, originalLineNumber, js);
+      emit(output, lineMap, originalLineNumber, `${js} ${buildTrackVarExpression(name)};`);
       i += 1;
       continue;
     }
@@ -420,6 +427,9 @@ function parseFunction(lines, startIndex, ctx, isMethod, methodInfo = null) {
     ? `${isConstructor ? "constructor" : `async ${name}`}(${params.join(", ")}) {`
     : `async function ${name}(${params.join(", ")}) {`;
   emit(output, lineMap, lineNumber, jsHeader);
+  for (const param of params) {
+    emit(output, lineMap, lineNumber, `${buildTrackVarExpression(param)};`);
+  }
 
   const fieldInitializers = [];
   if (isConstructor && methodInfo && Array.isArray(methodInfo.fields)) {
@@ -571,7 +581,7 @@ function translateAssignment(statement, ctx, classContext, allowGlobalPrefix, li
   }
   if (allowGlobalPrefix && /^global\b/i.test(left)) {
     const target = left.replace(/^global\b/i, "").trim();
-    return `globalThis.${target} = ${emitExpression(right, ctx, true, classContext, lineNumber)};`;
+    return `globalThis.${target} = ${emitExpression(right, ctx, true, classContext, lineNumber)}; ${buildTrackVarExpression(target, `globalThis.${target}`)};`;
   }
 
   const leftExpr = parseSimpleTarget(left, ctx, classContext);
@@ -582,9 +592,9 @@ function translateAssignment(statement, ctx, classContext, allowGlobalPrefix, li
     }
     if (!scope.declared.has(leftExpr.name)) {
       scope.declared.add(leftExpr.name);
-      return `var ${leftExpr.name} = ${emitExpression(right, ctx, true, classContext, lineNumber)};`;
+      return `var ${leftExpr.name} = ${emitExpression(right, ctx, true, classContext, lineNumber)}; ${buildTrackVarExpression(leftExpr.name)};`;
     }
-    return `${leftExpr.name} = ${emitExpression(right, ctx, true, classContext, lineNumber)};`;
+    return `${leftExpr.name} = ${emitExpression(right, ctx, true, classContext, lineNumber)}; ${buildTrackVarExpression(leftExpr.name)};`;
   }
   return `${leftExpr.code} = ${emitExpression(right, ctx, true, classContext, lineNumber)};`;
 }
@@ -1144,6 +1154,116 @@ function makeScope(parent = null) {
     parent,
     declared: new Set()
   };
+}
+
+function buildTrackVarExpression(name, valueCode = null) {
+  const key = JSON.stringify(String(name));
+  const value = valueCode || String(name);
+  return `__runtime.trackVar(${key}, ${value})`;
+}
+
+function instrumentDebugTrace(lines, lineMap, sourceLines = []) {
+  const instrumentedLines = [];
+  const instrumentedMap = [];
+  let classBraceDepth = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = String(lines[i] || "");
+    const sourceLine = lineMap[i];
+    const trimmed = line.trim();
+    const startsClass = /^class\b/i.test(trimmed) && /\{\s*$/.test(trimmed);
+    const inClassBody = classBraceDepth > 0 || startsClass;
+
+    if (!inClassBody && shouldTraceBeforeLine(trimmed) && Number.isInteger(sourceLine) && sourceLine > 0) {
+      instrumentedLines.push(`await __runtime.traceStep(${sourceLine});`);
+      instrumentedMap.push(sourceLine);
+    }
+
+    instrumentedLines.push(line);
+    instrumentedMap.push(sourceLine);
+
+    if (!inClassBody && isLoopIterationStart(trimmed) && Number.isInteger(sourceLine) && sourceLine > 0) {
+      // Runs at the beginning of each iteration for FOR/WHILE/DO loops.
+      instrumentedLines.push(`await __runtime.traceStep(${sourceLine});`);
+      instrumentedMap.push(sourceLine);
+    }
+
+    if (
+      !inClassBody &&
+      trimmed === "}" &&
+      Number.isInteger(sourceLine) &&
+      sourceLine > 0 &&
+      isNextTerminatorSourceLine(sourceLines[sourceLine - 1])
+    ) {
+      // Marks NEXT at the end of each FOR iteration.
+      instrumentedLines.push(`await __runtime.traceStep(${sourceLine});`);
+      instrumentedMap.push(sourceLine);
+    }
+
+    if (!inClassBody && shouldTraceAfterLine(trimmed) && Number.isInteger(sourceLine) && sourceLine > 0) {
+      instrumentedLines.push(`await __runtime.traceStep(${sourceLine});`);
+      instrumentedMap.push(sourceLine);
+    }
+
+    classBraceDepth += countChar(trimmed, "{");
+    classBraceDepth -= countChar(trimmed, "}");
+    if (classBraceDepth < 0) {
+      classBraceDepth = 0;
+    }
+  }
+  return {
+    lines: instrumentedLines,
+    lineMap: instrumentedMap
+  };
+}
+
+function countChar(text, target) {
+  let total = 0;
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] === target) {
+      total += 1;
+    }
+  }
+  return total;
+}
+
+function shouldTraceBeforeLine(line) {
+  if (!line) {
+    return false;
+  }
+  return (
+    /^if\s*\(/i.test(line) ||
+    /^\}\s*else if\s*\(/i.test(line) ||
+    /^switch\s*\(/i.test(line) ||
+    /^return\b/i.test(line)
+  );
+}
+
+function shouldTraceAfterLine(line) {
+  if (!line || !/;\s*$/.test(line)) {
+    return false;
+  }
+  if (/^await __runtime\.traceStep\(/.test(line)) {
+    return false;
+  }
+  if (/^break;$/i.test(line)) {
+    return false;
+  }
+  if (/^return\b/i.test(line)) {
+    return false;
+  }
+  if (/^\}\s*while\s*\(/i.test(line)) {
+    return false;
+  }
+  return true;
+}
+
+function isLoopIterationStart(line) {
+  return /^for\s*\(/i.test(line) || /^while\s*\(/i.test(line) || /^do\s*\{$/i.test(line);
+}
+
+function isNextTerminatorSourceLine(sourceLine) {
+  const stripped = stripComments(sourceLine).trim();
+  return /^next\b/i.test(stripped);
 }
 
 function emit(lines, lineMap, sourceLine, code) {
