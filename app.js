@@ -620,6 +620,7 @@ const app = Vue.createApp({
       if (this.restoringState) {
         return;
       }
+      this.stopProgram(true);
       this.showJs = false;
       this.loadExample();
       this.persistState();
@@ -681,8 +682,6 @@ const app = Vue.createApp({
           return;
         }
         this.terminalStatus = `Loaded example: ${example.name}`;
-        this.appendLine("Loaded example: " + example.name, "info");
-        this.scrollTerminalToBottom();
       })().catch((error) => {
         if (loadToken !== this.exampleLoadToken) {
           return;
@@ -743,6 +742,7 @@ const app = Vue.createApp({
 
       this.generatedJs = compiled.js;
       this.lineMap = compiled.lineMap;
+      this.traceColumns = this.extractInitialTraceColumns(compiled.js);
 
       this.running = true;
       this.debugPaused = startPaused;
@@ -791,7 +791,8 @@ const app = Vue.createApp({
       this.currentPseudoLine = 0;
       this.terminalStatus = "Idle";
       if (showMessage) {
-        this.appendLine("Run stopped.", "info");
+        this.outputLines = [];
+        this.resetDebugState();
       }
     },
     resetDebugState() {
@@ -804,8 +805,7 @@ const app = Vue.createApp({
     async stepProgram() {
       if (!this.running) {
         await this.startProgram({
-          startPaused: true,
-          initialControl: "step"
+          startPaused: true
         });
         return;
       }
@@ -857,6 +857,10 @@ const app = Vue.createApp({
         this.handleTraceStep(message);
         return;
       }
+      if (message.type === "debug-line") {
+        this.handleDebugLine(message);
+        return;
+      }
       if (message.type === "prompt") {
         this.promptActive = true;
         this.promptText = message.text;
@@ -893,9 +897,6 @@ const app = Vue.createApp({
       const pseudoLine = Number(message.pseudoLine) || 0;
       const snapshot = this.cloneTraceSnapshot(message.snapshot && typeof message.snapshot === "object" ? message.snapshot : {});
       const stepIndex = Number(message.stepIndex) || this.traceRows.length + 1;
-      this.currentPseudoLine = pseudoLine;
-      this.debugPaused = !!message.paused;
-      this.terminalStatus = this.debugPaused ? "Running (paused)" : "Running";
       this.updateTraceColumns(snapshot);
       const previousSnapshot = this.lastTraceSnapshot;
       const row = {
@@ -909,6 +910,12 @@ const app = Vue.createApp({
       if (this.traceRowHasVisibleChange(row)) {
         this.traceRows.push(row);
       }
+    },
+    handleDebugLine(message) {
+      const pseudoLine = Number(message.pseudoLine) || 0;
+      this.currentPseudoLine = pseudoLine;
+      this.debugPaused = !!message.paused;
+      this.terminalStatus = this.debugPaused ? "Running (paused)" : "Running";
       this.scrollEditorToLine(pseudoLine);
     },
     updateTraceColumns(snapshot) {
@@ -917,6 +924,30 @@ const app = Vue.createApp({
         nextColumns.add(key);
       }
       this.traceColumns = Array.from(nextColumns).sort((left, right) => left.localeCompare(right));
+    },
+    extractInitialTraceColumns(jsCode) {
+      const hiddenVariables = new Set();
+      const handlePattern = /(?:var\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*await\s+__runtime\.open(?:Read|Write)\(/g;
+      for (const match of String(jsCode || "").matchAll(handlePattern)) {
+        hiddenVariables.add(match[1]);
+      }
+
+      const columns = new Set();
+      const trackPattern = /__runtime\.trackVar\(("(?:[^"\\]|\\.)*")\s*,\s*([A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)?)\)/g;
+      for (const match of String(jsCode || "").matchAll(trackPattern)) {
+        let name;
+        try {
+          name = JSON.parse(match[1]);
+        } catch {
+          continue;
+        }
+        const valueReference = String(match[2]).replace(/^globalThis\./, "");
+        if (hiddenVariables.has(name) || hiddenVariables.has(valueReference)) {
+          continue;
+        }
+        columns.add(name);
+      }
+      return Array.from(columns).sort((left, right) => left.localeCompare(right));
     },
     formatTraceCell(row, column) {
       if (!row || !row.snapshot || !(column in row.snapshot)) {
@@ -1492,14 +1523,23 @@ function createRunnerWorker(initialFiles = []) {
         post("trace-step", {
           stepIndex: debugState.stepIndex,
           pseudoLine: line,
-          snapshot: snapshotTrackedVars(),
+          snapshot: snapshotTrackedVars()
+        });
+      },
+      beforeStep: async (pseudoLine) => {
+        if (!debugState.enabled) {
+          return;
+        }
+        const line = Number(pseudoLine) || 0;
+        if (debugState.mode === "step") {
+          debugState.mode = "paused";
+        }
+        post("debug-line", {
+          pseudoLine: line,
           paused: debugState.mode === "paused"
         });
         while (debugState.mode === "paused") {
           await waitForDebugCommand();
-        }
-        if (debugState.mode === "step") {
-          debugState.mode = "paused";
         }
       }
     };

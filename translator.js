@@ -114,6 +114,7 @@ function translateStatements(lines, startIndex, terminators, ctx) {
       if (!/^endwhile\b/i.test(stripComments(lines[inner.nextIndex] || "").trim())) {
         throw syntaxError("Missing endwhile", originalLineNumber);
       }
+      emit(output, lineMap, inner.nextIndex + 1, `await __runtime.beforeStep(${inner.nextIndex + 1});`);
       emit(output, lineMap, inner.nextIndex + 1, `}`);
       i = inner.nextIndex + 1;
       continue;
@@ -156,6 +157,7 @@ function translateStatements(lines, startIndex, terminators, ctx) {
       if (!/^next\b/i.test(stripComments(lines[inner.nextIndex] || "").trim())) {
         throw syntaxError("Missing next", originalLineNumber);
       }
+      emit(output, lineMap, inner.nextIndex + 1, `await __runtime.beforeStep(${inner.nextIndex + 1});`);
       emit(output, lineMap, inner.nextIndex + 1, `}`);
       i = inner.nextIndex + 1;
       continue;
@@ -1173,6 +1175,11 @@ function instrumentDebugTrace(lines, lineMap, sourceLines = []) {
     const startsClass = /^class\b/i.test(trimmed) && /\{\s*$/.test(trimmed);
     const inClassBody = classBraceDepth > 0 || startsClass;
 
+    if (!inClassBody && shouldPauseBeforeLine(trimmed) && Number.isInteger(sourceLine) && sourceLine > 0) {
+      instrumentedLines.push(`await __runtime.beforeStep(${sourceLine});`);
+      instrumentedMap.push(sourceLine);
+    }
+
     if (!inClassBody && shouldTraceBeforeLine(trimmed) && Number.isInteger(sourceLine) && sourceLine > 0) {
       instrumentedLines.push(`await __runtime.traceStep(${sourceLine});`);
       instrumentedMap.push(sourceLine);
@@ -1187,27 +1194,17 @@ function instrumentDebugTrace(lines, lineMap, sourceLines = []) {
       instrumentedMap.push(sourceLine);
     }
 
-    if (
-      !inClassBody &&
-      trimmed === "}" &&
-      Number.isInteger(sourceLine) &&
-      sourceLine > 0 &&
-      isNextTerminatorSourceLine(sourceLines[sourceLine - 1])
-    ) {
-      // Marks NEXT at the end of each FOR iteration.
-      instrumentedLines.push(`await __runtime.traceStep(${sourceLine});`);
-      instrumentedMap.push(sourceLine);
-    }
-
     if (!inClassBody && shouldTraceAfterLine(trimmed) && Number.isInteger(sourceLine) && sourceLine > 0) {
       instrumentedLines.push(`await __runtime.traceStep(${sourceLine});`);
       instrumentedMap.push(sourceLine);
     }
 
-    classBraceDepth += countChar(trimmed, "{");
-    classBraceDepth -= countChar(trimmed, "}");
-    if (classBraceDepth < 0) {
-      classBraceDepth = 0;
+    if (startsClass || classBraceDepth > 0) {
+      classBraceDepth += countChar(trimmed, "{");
+      classBraceDepth -= countChar(trimmed, "}");
+      if (classBraceDepth < 0) {
+        classBraceDepth = 0;
+      }
     }
   }
   return {
@@ -1230,6 +1227,9 @@ function shouldTraceBeforeLine(line) {
   if (!line) {
     return false;
   }
+  if (/^await __runtime\.(?:traceStep|beforeStep)\(/.test(line)) {
+    return false;
+  }
   return (
     /^if\s*\(/i.test(line) ||
     /^\}\s*else if\s*\(/i.test(line) ||
@@ -1242,7 +1242,7 @@ function shouldTraceAfterLine(line) {
   if (!line || !/;\s*$/.test(line)) {
     return false;
   }
-  if (/^await __runtime\.traceStep\(/.test(line)) {
+  if (/^await __runtime\.(?:traceStep|beforeStep)\(/.test(line)) {
     return false;
   }
   if (/^break;$/i.test(line)) {
@@ -1261,9 +1261,29 @@ function isLoopIterationStart(line) {
   return /^for\s*\(/i.test(line) || /^while\s*\(/i.test(line) || /^do\s*\{$/i.test(line);
 }
 
-function isNextTerminatorSourceLine(sourceLine) {
-  const stripped = stripComments(sourceLine).trim();
-  return /^next\b/i.test(stripped);
+function shouldPauseBeforeLine(line) {
+  if (!line) {
+    return false;
+  }
+  if (/^await __runtime\.(?:traceStep|beforeStep)\(/.test(line)) {
+    return false;
+  }
+  if (/^break;$/i.test(line)) {
+    return false;
+  }
+  if (/^\}$/.test(line)) {
+    return false;
+  }
+  return (
+    /;\s*$/.test(line) ||
+    /^if\s*\(/i.test(line) ||
+    /^\}\s*else if\s*\(/i.test(line) ||
+    /^switch\s*\(/i.test(line) ||
+    /^for\s*\(/i.test(line) ||
+    /^while\s*\(/i.test(line) ||
+    /^do\s*\{$/i.test(line) ||
+    /^return\b/i.test(line)
+  );
 }
 
 function emit(lines, lineMap, sourceLine, code) {

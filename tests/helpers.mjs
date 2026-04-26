@@ -35,6 +35,7 @@ export async function runSource(source, runtimeOverrides = {}) {
     openRead: async (path) => makeReader(files, path),
     openWrite: async (path) => makeWriter(files, path),
     trackVar: (name, value) => value,
+    beforeStep: async () => {},
     traceStep: async () => {}
   };
 

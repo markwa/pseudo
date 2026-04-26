@@ -117,7 +117,7 @@ const cases = [
 
     assert.match(js, /await __runtime\.print\("hello"\);/);
     assert.match(js, /await __runtime\.traceStep\(2\);/);
-    assert.deepEqual(lineMap, [2, 2]);
+    assert.deepEqual(lineMap, [2, 2, 2]);
   }],
   ["translated JavaScript is indented for nested blocks", () => {
     const source = [
@@ -134,7 +134,7 @@ const cases = [
     const source = `print("one")\nprint("two")\nprint("three")`;
     const { lineMap } = translateSource(source);
 
-    assert.deepEqual(lineMap, [1, 1, 2, 2, 3, 3]);
+    assert.deepEqual(lineMap, [1, 1, 1, 2, 2, 2, 3, 3, 3]);
   }],
   ["translator adds trace checkpoints and tracked-variable updates", () => {
     const source = ["x = 1", "x = x + 1", "print(str(x))"].join("\n");
@@ -143,6 +143,24 @@ const cases = [
     assert.match(js, /__runtime\.trackVar\("x", x\)/);
     assert.match(js, /await __runtime\.traceStep\(1\);/);
     assert.match(js, /await __runtime\.traceStep\(3\);/);
+  }],
+  ["translator traces while loop headers, body statements, and terminators", () => {
+    const source = [
+      "n = 3",
+      "WHILE n > 0",
+      "  PRINT(STR(n))",
+      "  n = n - 1",
+      "ENDWHILE",
+      'PRINT("Done")'
+    ].join("\n");
+    const { js } = translateSource(source);
+
+    assert.match(js, /await __runtime\.beforeStep\(1\);\nvar n = 3;/);
+    assert.match(js, /await __runtime\.beforeStep\(2\);\nwhile \(\(n > 0\)\) \{/);
+    assert.match(js, /await __runtime\.beforeStep\(3\);\n  await __runtime\.print\(String\(n\)\);/);
+    assert.match(js, /await __runtime\.beforeStep\(4\);\n  n = \(n - 1\); __runtime\.trackVar\("n", n\);/);
+    assert.match(js, /await __runtime\.beforeStep\(5\);\n\}/);
+    assert.match(js, /n = \(n - 1\); __runtime\.trackVar\("n", n\);\n  await __runtime\.traceStep\(4\);/);
   }],
   ["missing endif is reported with the opening line number", () => {
     assert.throws(
@@ -1422,6 +1440,90 @@ const cases = [
     assert.match(appSource, /__traceLabel: "\[File\]"/);
   }],
 
+  ["trace table seeds columns before the first trace row", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options);
+    const { js } = translateSource([
+      "ARRAY values[10]",
+      "index = 0",
+      'myFile = OPENREAD("input.txt")',
+      "WHILE index < 2",
+      "  values[index] = index",
+      "  index = index + 1",
+      "ENDWHILE",
+      "total = index"
+    ].join("\n"));
+
+    assert.deepEqual(app.extractInitialTraceColumns(js), ["index", "total", "values"]);
+  }],
+
+  ["reset clears terminal output and trace table state", async () => {
+    const options = await loadAppOptions();
+    const app = buildAppInstance(options, {
+      outputLines: [{ kind: "output", text: "old output" }],
+      traceRows: [{ step: 1, line: 2, snapshot: { x: 1 } }],
+      traceColumns: ["x"],
+      lastTraceSnapshot: { x: 1 },
+      currentPseudoLine: 2,
+      debugPaused: true,
+      running: true
+    });
+
+    app.stopProgram();
+
+    assert.deepEqual(app.outputLines, []);
+    assert.deepEqual(app.traceRows, []);
+    assert.deepEqual(app.traceColumns, []);
+    assert.equal(app.lastTraceSnapshot, null);
+    assert.equal(app.currentPseudoLine, 0);
+    assert.equal(app.debugPaused, false);
+    assert.equal(app.running, false);
+  }],
+
+  ["lesson changes reset active run state before loading the new example", async () => {
+    const options = await loadAppOptions();
+    let terminated = false;
+    const originalLocalStorage = globalThis.localStorage;
+    globalThis.localStorage = {
+      getItem() {
+        return null;
+      },
+      setItem() {}
+    };
+    const app = buildAppInstance(options, {
+      selectedExample: 1,
+      outputLines: [{ kind: "output", text: "old output" }],
+      traceRows: [{ step: 1, line: 2, snapshot: { x: 1 } }],
+      traceColumns: ["x"],
+      lastTraceSnapshot: { x: 1 },
+      currentPseudoLine: 2,
+      debugPaused: true,
+      running: true,
+      worker: {
+        terminate() {
+          terminated = true;
+        }
+      }
+    });
+
+    try {
+      options.watch.selectedExample.call(app);
+      await app.exampleLoadPromise;
+
+      assert.equal(terminated, true);
+      assert.equal(app.worker, null);
+      assert.equal(app.running, false);
+      assert.equal(app.debugPaused, false);
+      assert.deepEqual(app.outputLines, []);
+      assert.deepEqual(app.traceRows, []);
+      assert.deepEqual(app.traceColumns, []);
+      assert.equal(app.currentPseudoLine, 0);
+      assert.equal(app.editorText, app.examples[1].code);
+    } finally {
+      globalThis.localStorage = originalLocalStorage;
+    }
+  }],
+
   ["sorting examples write sorted.txt in ascending order", async () => {
     const originalLocalStorage = globalThis.localStorage;
     const originalFetch = globalThis.fetch;
@@ -2332,6 +2434,7 @@ const cases = [
     const appSource = readFileSync(new URL("../app.js", import.meta.url), "utf8");
     const htmlSource = readFileSync(new URL("../index.html", import.meta.url), "utf8");
 
+    assert.match(appSource, /selectedExample\(\)\s*\{[\s\S]*?this\.stopProgram\(true\);/);
     assert.match(appSource, /loadExample\(\)\s*\{[\s\S]*?this\.clearVirtualFiles\(false\);/);
     assert.match(appSource, /async handleEditorLoad\(event\)\s*\{[\s\S]*?this\.clearVirtualFiles\(false\);/);
     assert.match(appSource, /selectedExample\(\)\s*\{[\s\S]*?this\.showJs = false;/);
