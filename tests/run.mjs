@@ -2220,19 +2220,28 @@ const cases = [
     try {
       const options = await loadAppOptions();
       const app = buildAppInstance(options);
-      const sortNames = ["Bubble Sort", "Insertion Sort", "Merge Sort", "Quick Sort"];
+      const sortNames = [
+        ["Bubble Sort", "ocr"],
+        ["Insertion Sort", "ocr"],
+        ["Merge Sort", "ocr"],
+        ["Quick Sort", "ocr"],
+        ["Bubble Sort (Python)", "python"],
+        ["Insertion Sort (Python)", "python"],
+        ["Merge Sort (Python)", "python"],
+        ["Quick Sort (Python)", "python"]
+      ];
 
-      for (const name of sortNames) {
+      for (const [name, language] of sortNames) {
         const example = app.examples.find((entry) => entry.name === name);
         assert.ok(example);
         assert.ok(Array.isArray(example.files) && example.files.length === 1);
 
-        const folder = name.toLowerCase().replace(/\s+/g, "-");
+        const folder = name.toLowerCase().replace(/\s+\(python\)$/i, "").replace(/\s+/g, "-");
         const inputLines = loadSortInputLines(folder).map((line) => String(line));
         const expected = [...inputLines].map((line) => Number(line)).sort((left, right) => left - right).map(String);
         const { output, files } = await runSource(example.code, {
           files: new Map([["unsorted.txt", inputLines]])
-        });
+        }, language === "python" ? { language: "python" } : {});
 
         assert.deepEqual(output, [expected[0], expected[expected.length - 1]]);
         assert.deepEqual(files.get("sorted.txt"), expected);

@@ -2721,15 +2721,38 @@ function createRunnerWorker(initialFiles = []) {
       }
     };
 
-    function parseStackLine(stack) {
-      if (!stack) return null;
-      const match = String(stack).match(/ocr-pseudocode-translated\\.js:(\\d+):(\\d+)/i);
-      return match ? Number(match[1]) : null;
+    function parseGeneratedLine(error) {
+      const stack = error && error.stack ? String(error.stack) : "";
+      const sourceMatch = stack.match(/ocr-pseudocode-translated\\.js:(\\d+):(\\d+)/i);
+      if (sourceMatch) {
+        return Number(sourceMatch[1]);
+      }
+      const genericMatch = stack.match(/<anonymous>:(\\d+):(\\d+)/i);
+      if (genericMatch) {
+        return Number(genericMatch[1]);
+      }
+      if (error && Number.isFinite(Number(error.lineNumber))) {
+        return Number(error.lineNumber);
+      }
+      return null;
+    }
+
+    function mapGeneratedLineToPseudoLine(generatedLine, lineMap) {
+      if (!generatedLine || !Array.isArray(lineMap) || !lineMap.length) {
+        return null;
+      }
+      const candidateIndexes = [generatedLine - 2, generatedLine - 1, generatedLine - 3];
+      for (const index of candidateIndexes) {
+        if (index >= 0 && index < lineMap.length && lineMap[index]) {
+          return lineMap[index];
+        }
+      }
+      return null;
     }
 
     function reportError(error, lineMap) {
-      const pseudoLine = parseStackLine(error && error.stack);
-      const mappedLine = pseudoLine ? lineMap[pseudoLine - 1] || pseudoLine : null;
+      const generatedLine = parseGeneratedLine(error);
+      const mappedLine = mapGeneratedLineToPseudoLine(generatedLine, lineMap);
       post("error", {
         message: error && error.message ? error.message : String(error),
         stack: error && error.stack ? String(error.stack) : "",

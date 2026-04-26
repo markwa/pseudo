@@ -245,7 +245,7 @@ class PythonTranslator {
         continue;
       }
       if (next.indent !== line.indent) {
-        return;
+        break;
       }
       const elifMatch = next.code.match(/^elif\s+(.+)\s*:\s*$/);
       if (elifMatch) {
