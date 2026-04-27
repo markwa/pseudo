@@ -2933,7 +2933,6 @@ const cases = [
         editorText: 'PRINT("custom")',
         selectedExample: 0,
         selectedLanguage: "python",
-        showJs: true,
         showVirtualFs: true,
         expandTraceArrays: true,
         compressTraceTable: true,
@@ -2952,7 +2951,6 @@ const cases = [
       const saved = JSON.parse(store.get("ocr-pseudocode-teaching-tool:v1"));
       assert.equal(saved.editorText, 'PRINT("custom")');
       assert.equal(saved.selectedLanguage, "python");
-      assert.equal(saved.showJs, true);
       assert.equal(saved.showVirtualFs, true);
       assert.equal(saved.expandTraceArrays, true);
       assert.equal(saved.compressTraceTable, true);
@@ -2968,7 +2966,6 @@ const cases = [
         selectedExample: 0,
         selectedExampleName: "Files (Python)",
         selectedLanguage: "python",
-        showJs: false,
         showVirtualFs: true,
         expandTraceArrays: true,
         compressTraceTable: true,
@@ -2981,7 +2978,6 @@ const cases = [
 
       assert.equal(restored.editorText, 'PRINT("restored")');
       assert.equal(restored.selectedLanguage, "python");
-      assert.equal(restored.showJs, false);
       assert.equal(restored.showVirtualFs, true);
       assert.equal(restored.expandTraceArrays, true);
       assert.equal(restored.compressTraceTable, true);
@@ -3131,9 +3127,7 @@ const cases = [
     assert.match(appSource, /selectedExample\(\)\s*\{[\s\S]*?this\.stopProgram\(true\);/);
     assert.match(appSource, /loadExample\(\)\s*\{[\s\S]*?this\.clearVirtualFiles\(false\);/);
     assert.match(appSource, /async handleEditorLoad\(event\)\s*\{[\s\S]*?this\.clearVirtualFiles\(false\);/);
-    assert.match(appSource, /selectedExample\(\)\s*\{[\s\S]*?this\.showJs = false;/);
     assert.match(appSource, /persistState\(\)\s*\{[\s\S]*?selectedExampleName:/);
-    assert.match(appSource, /persistState\(\)\s*\{[\s\S]*?showJs:/);
     assert.match(appSource, /restoreState\(\)\s*\{[\s\S]*?selectedExampleName/);
     assert.match(htmlSource, /<span>Load<\/span>/);
     assert.match(htmlSource, /<span>Save<\/span>/);

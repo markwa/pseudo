@@ -1029,9 +1029,7 @@ const app = Vue.createApp({
       selectedLanguage: "ocr",
       editorText: EXAMPLES[0].code,
       outputLines: [],
-      generatedJs: "",
       lineMap: [],
-      showJs: false,
       showVirtualFs: false,
       showTraceTable: true,
       expandTraceArrays: false,
@@ -1134,7 +1132,6 @@ const app = Vue.createApp({
         return;
       }
       this.stopProgram(true);
-      this.showJs = false;
       this.loadExample();
       this.persistState();
     },
@@ -1143,11 +1140,7 @@ const app = Vue.createApp({
         return;
       }
       this.stopProgram(true);
-      this.showJs = false;
       this.loadExample();
-      this.persistState();
-    },
-    showJs() {
       this.persistState();
     },
     showVirtualFs() {
@@ -1274,7 +1267,6 @@ const app = Vue.createApp({
         return;
       }
 
-      this.generatedJs = compiled.js;
       this.lineMap = compiled.lineMap;
       this.traceColumns = this.extractInitialTraceColumns(compiled.js);
       this.traceArrayColumns = this.extractInitialTraceArrayColumns(compiled.js);
@@ -2165,7 +2157,6 @@ const app = Vue.createApp({
         selectedExample: this.selectedExample,
         selectedExampleName: this.examples[this.selectedExample]?.name || "",
         selectedLanguage: this.selectedLanguage,
-        showJs: this.showJs,
         showVirtualFs: this.showVirtualFs,
         showTraceTable: this.showTraceTable,
         expandTraceArrays: this.expandTraceArrays,
@@ -2200,9 +2191,6 @@ const app = Vue.createApp({
         }
         if (typeof state.editorText === "string") {
           this.editorText = state.editorText;
-        }
-        if (typeof state.showJs === "boolean") {
-          this.showJs = state.showJs;
         }
         if (typeof state.showVirtualFs === "boolean") {
           this.showVirtualFs = state.showVirtualFs;

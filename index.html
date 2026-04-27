@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Pseudocode Online Compiler</title>
+  <title>Trace Tables</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
@@ -12,7 +12,7 @@
   <div id="app" class="app-shell" v-cloak>
     <header class="topbar">
       <div>
-        <div class="eyebrow">Pseudocode teaching tool</div>
+        <div class="eyebrow">Trace Tables</div>
       </div>
       <div class="toolbar">
         <label class="select-wrap">
@@ -37,20 +37,8 @@
         <button class="btn btn-compact" @click="continueProgram" :disabled="!canContinue">
           <i class="bi bi-fast-forward" aria-hidden="true"></i><span>Continue</span>
         </button>
-        <button class="btn btn-compact" @click="pauseProgram" :disabled="!canPause">
-          <i class="bi bi-pause-fill" aria-hidden="true"></i><span>Pause</span>
-        </button>
         <button class="btn btn-compact" @click="stopProgram">
           <i class="bi bi-stop-fill" aria-hidden="true"></i><span>Reset</span>
-        </button>
-        <button class="btn btn-compact" @click="openEditorLoadDialog">
-          <i class="bi bi-upload" aria-hidden="true"></i><span>Load</span>
-        </button>
-        <button class="btn btn-compact" @click="saveEditorProgram">
-          <i class="bi bi-download" aria-hidden="true"></i><span>Save</span>
-        </button>
-        <button class="btn btn-compact" @click="showJs = !showJs">
-          <i class="bi bi-code-slash" aria-hidden="true"></i><span>{{ showJs ? 'Hide JS' : 'Show JS' }}</span>
         </button>
         <button class="btn btn-compact" @click="showVirtualFs = !showVirtualFs">
           <i class="bi bi-hdd-stack" aria-hidden="true"></i><span>{{ showVirtualFs ? 'Hide Files' : 'Show Files' }}</span>
@@ -61,11 +49,18 @@
     <main class="workspace">
       <section class="panel editor-panel">
         <div class="panel-head">
-          <h2>{{ showJs ? 'Generated JavaScript' : 'Editor' }}</h2>
-          <span class="status" :class="{ running }">{{ runStateText }}</span>
+          <h2>Editor</h2>
+          <div class="panel-head-actions">
+            <button class="btn btn-compact btn-xs" @click="openEditorLoadDialog">
+              <i class="bi bi-upload" aria-hidden="true"></i><span>Load</span>
+            </button>
+            <button class="btn btn-compact btn-xs" @click="saveEditorProgram">
+              <i class="bi bi-download" aria-hidden="true"></i><span>Save</span>
+            </button>
+            <span class="status" :class="{ running }">{{ runStateText }}</span>
+          </div>
         </div>
-        <template v-if="!showJs">
-          <div class="editor-shell">
+        <div class="editor-shell">
             <div class="line-gutter" ref="gutterScroll" aria-hidden="true">
               <div v-for="n in editorLineCount" :key="n" :class="{ active: n === currentPseudoLine && debugPaused }">
                 <span class="line-marker" aria-hidden="true">{{ n === currentPseudoLine && debugPaused ? '▶' : '' }}</span>
@@ -84,10 +79,6 @@
               :placeholder="selectedLanguage === 'python' ? 'Type Python here...' : 'Type pseudocode here...'"
             ></textarea>
           </div>
-        </template>
-        <template v-else>
-          <pre class="js-view">{{ generatedJs || '// Run the program to see generated JavaScript.' }}</pre>
-        </template>
       </section>
 
       <section class="panel terminal-panel">
@@ -95,7 +86,7 @@
           <h2>Terminal</h2>
           <span class="status muted">{{ terminalStatus }}</span>
         </div>
-        <div class="terminal-stack" :class="{ 'with-files': showVirtualFs }">
+        <div class="terminal-stack">
           <div class="terminal" ref="terminalScroll" @mousedown="focusPromptInput">
             <div v-for="(line, idx) in outputLines" :key="idx" class="terminal-line" :class="line.kind">
               <span v-text="line.text"></span>
@@ -115,52 +106,51 @@
               >
             </form>
           </div>
-
-          <section v-if="showVirtualFs" class="filesystem-viewer" aria-label="Virtual filesystem viewer">
-            <div class="filesystem-head">
-              <div>
-                <h3>Files</h3>
-                <p class="filesystem-summary">
-                  {{ virtualFiles.length }} file{{ virtualFiles.length === 1 ? '' : 's' }}
-                </p>
-              </div>
-              <div class="filesystem-actions">
-                <button class="btn btn-compact" @click="openVirtualFsUpload" :disabled="running">
-                  <i class="bi bi-upload" aria-hidden="true"></i><span>Upload</span>
-                </button>
-                <button class="btn btn-compact" @click="downloadSelectedVirtualFile" :disabled="!selectedVirtualFile">
-                  <i class="bi bi-download" aria-hidden="true"></i><span>Download</span>
-                </button>
-                <button class="btn btn-compact" @click="clearVirtualFiles" :disabled="!virtualFiles.length">
-                  <i class="bi bi-trash3" aria-hidden="true"></i><span>Delete Files</span>
-                </button>
-              </div>
-            </div>
-            <div class="filesystem-body">
-              <div class="filesystem-list" role="listbox" aria-label="Virtual filesystem files">
-                <button
-                  v-for="file in virtualFiles"
-                  :key="file.path"
-                  type="button"
-                  class="filesystem-entry"
-                  :class="{ active: selectedVirtualFilePath === file.path }"
-                  @click="selectedVirtualFilePath = file.path"
-                >
-                  <span class="filesystem-name">{{ file.path }}</span>
-                  <span class="filesystem-meta">{{ file.lines.length }} line{{ file.lines.length === 1 ? '' : 's' }}</span>
-                </button>
-                <div v-if="!virtualFiles.length" class="filesystem-empty">
-                  Upload a file to add it to the virtual filesystem.
-                </div>
-              </div>
-              <pre class="filesystem-preview">{{ selectedVirtualFile ? formatVirtualFile(selectedVirtualFile) : 'Select a file to preview it.' }}</pre>
-            </div>
-          </section>
-
         </div>
       </section>
 
-      <section v-if="showTraceTable" class="trace-viewer" aria-label="Execution trace table">
+      <section v-if="showVirtualFs" class="filesystem-viewer" aria-label="Virtual filesystem viewer">
+        <div class="filesystem-head">
+          <div>
+            <h3>Files</h3>
+            <p class="filesystem-summary">
+              {{ virtualFiles.length }} file{{ virtualFiles.length === 1 ? '' : 's' }}
+            </p>
+          </div>
+          <div class="filesystem-actions">
+            <button class="btn btn-compact" @click="openVirtualFsUpload" :disabled="running">
+              <i class="bi bi-upload" aria-hidden="true"></i><span>Upload</span>
+            </button>
+            <button class="btn btn-compact" @click="downloadSelectedVirtualFile" :disabled="!selectedVirtualFile">
+              <i class="bi bi-download" aria-hidden="true"></i><span>Download</span>
+            </button>
+            <button class="btn btn-compact" @click="clearVirtualFiles" :disabled="!virtualFiles.length">
+              <i class="bi bi-trash3" aria-hidden="true"></i><span>Delete Files</span>
+            </button>
+          </div>
+        </div>
+        <div class="filesystem-body">
+          <div class="filesystem-list" role="listbox" aria-label="Virtual filesystem files">
+            <button
+              v-for="file in virtualFiles"
+              :key="file.path"
+              type="button"
+              class="filesystem-entry"
+              :class="{ active: selectedVirtualFilePath === file.path }"
+              @click="selectedVirtualFilePath = file.path"
+            >
+              <span class="filesystem-name">{{ file.path }}</span>
+              <span class="filesystem-meta">{{ file.lines.length }} line{{ file.lines.length === 1 ? '' : 's' }}</span>
+            </button>
+            <div v-if="!virtualFiles.length" class="filesystem-empty">
+              Upload a file to add it to the virtual filesystem.
+            </div>
+          </div>
+          <pre class="filesystem-preview">{{ selectedVirtualFile ? formatVirtualFile(selectedVirtualFile) : 'Select a file to preview it.' }}</pre>
+        </div>
+      </section>
+
+      <section v-if="showTraceTable && !showVirtualFs" class="trace-viewer" aria-label="Execution trace table">
         <div class="trace-head">
           <h3>Trace Table</h3>
           <div class="trace-head-actions">
