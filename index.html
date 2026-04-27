@@ -166,11 +166,11 @@
           <div class="trace-head-actions">
             <label class="trace-toggle">
               <input type="checkbox" v-model="expandTraceArrays">
-              <span>Expand arrays</span>
+              <span>Expand Arrays</span>
             </label>
             <label class="trace-toggle">
               <input type="checkbox" v-model="compressTraceTable">
-              <span>Compress</span>
+              <span>Compress Rows</span>
             </label>
             <p class="trace-summary">{{ traceSummaryText }}</p>
           </div>
@@ -209,7 +209,7 @@
     </main>
 
     <input ref="virtualFsUpload" class="sr-only" type="file" multiple @change="handleVirtualFsUpload">
-    <input ref="editorLoadInput" class="sr-only" type="file" accept=".ocr,.txt,text/plain" @change="handleEditorLoad">
+    <input ref="editorLoadInput" class="sr-only" type="file" accept=".psu,.txt,text/plain" @change="handleEditorLoad">
   </div>
 
   <script type="module" src="app.js"></script>

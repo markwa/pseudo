@@ -3058,7 +3058,7 @@ const cases = [
         target: {
           value: "ignored",
           files: [{
-            name: "lesson.ocr",
+            name: "lesson.psu",
             text: async () => 'PRINT("loaded")\r\nPRINT("again")'
           }]
         }
@@ -3070,7 +3070,7 @@ const cases = [
       assert.equal(blobs.length, 1);
       assert.equal(blobs[0].parts.join(""), 'PRINT("loaded")\nPRINT("again")');
       assert.equal(blobs[0].type, "text/plain;charset=utf-8");
-      assert.equal(downloads[0].download, "program.ocr");
+      assert.equal(downloads[0].download, "program.psu");
 
       await app.handleVirtualFsUpload({
         target: {
