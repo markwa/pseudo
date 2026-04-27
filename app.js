@@ -955,11 +955,13 @@ for row in range(0, 3):
   }
 ];
 
-const EXAMPLES = [
-  ...normalizeExamples(OCR_EXAMPLES, "ocr"),
-  { name: "Python", separator: true, language: "python" },
-  ...normalizeExamples(PYTHON_EXAMPLES, "python")
-];
+const EXAMPLES = normalizeExamples(OCR_EXAMPLES, "ocr");
+
+const PYTHON_EXAMPLES_BY_KEY = new Map(
+  normalizeExamples(PYTHON_EXAMPLES, "python")
+    .filter(e => !e.separator)
+    .map(e => [e.exampleKey, e])
+);
 
 function normalizeExamples(examples, language) {
   return examples.map((example) => ({
@@ -1024,7 +1026,7 @@ const app = Vue.createApp({
     return {
       examples: EXAMPLES,
       selectedExample: 0,
-      selectedLanguage: EXAMPLES[0].language || "ocr",
+      selectedLanguage: "ocr",
       editorText: EXAMPLES[0].code,
       outputLines: [],
       generatedJs: "",
@@ -1142,7 +1144,7 @@ const app = Vue.createApp({
       }
       this.stopProgram(true);
       this.showJs = false;
-      this.syncExampleToLanguage();
+      this.loadExample();
       this.persistState();
     },
     showJs() {
@@ -1196,10 +1198,11 @@ const app = Vue.createApp({
       const loadToken = ++this.exampleLoadToken;
       this.exampleLoadPromise = (async () => {
         this.clearVirtualFiles(false);
-        this.selectedLanguage = example.language || "ocr";
-        this.editorText = example.code;
-        if (Array.isArray(example.files) && example.files.length) {
-          const files = await this.loadExampleFiles(example.files);
+        const pythonVariant = PYTHON_EXAMPLES_BY_KEY.get(example.exampleKey);
+        const variant = this.selectedLanguage === "python" && pythonVariant ? pythonVariant : example;
+        this.editorText = variant.code;
+        if (Array.isArray(variant.files) && variant.files.length) {
+          const files = await this.loadExampleFiles(variant.files);
           if (loadToken !== this.exampleLoadToken) {
             return;
           }
@@ -1305,23 +1308,6 @@ const app = Vue.createApp({
         worker.postMessage({ type: "debug-control", action: initialControl });
       }
       return true;
-    },
-    syncExampleToLanguage() {
-      const current = this.examples[this.selectedExample];
-      if (!current || current.separator) {
-        return;
-      }
-      if ((current.language || "ocr") === this.selectedLanguage) {
-        return;
-      }
-      const targetIndex = this.examples.findIndex((example) =>
-        !example.separator
-        && example.exampleKey === current.exampleKey
-        && (example.language || "ocr") === this.selectedLanguage
-      );
-      if (targetIndex >= 0) {
-        this.selectedExample = targetIndex;
-      }
     },
     async runProgram() {
       await this.startProgram({ startPaused: false });
@@ -1491,6 +1477,7 @@ const app = Vue.createApp({
       this.traceEvents.push(row);
       if (this.traceRowHasVisibleChange(row)) {
         this.traceRows.push(row);
+        this.scrollTraceTableToBottom();
       }
     },
     handleDebugLine(message) {
@@ -1498,7 +1485,9 @@ const app = Vue.createApp({
       this.currentPseudoLine = pseudoLine;
       this.debugPaused = !!message.paused;
       this.terminalStatus = this.debugPaused ? "Running (paused)" : "Running";
-      this.scrollEditorToLine(pseudoLine);
+      if (this.debugPaused) {
+        this.scrollEditorToLine(pseudoLine);
+      }
     },
     updateTraceColumns(snapshot) {
       const nextColumns = new Set(this.traceColumns);
@@ -2016,6 +2005,14 @@ const app = Vue.createApp({
         }
       });
     },
+    scrollTraceTableToBottom() {
+      this.$nextTick(() => {
+        const el = this.$refs.traceTableWrap;
+        if (el) {
+          el.scrollTop = el.scrollHeight;
+        }
+      });
+    },
     focusInput() {
       const field = this.$refs.inputField;
       if (field) {
@@ -2188,9 +2185,9 @@ const app = Vue.createApp({
         }
         const state = JSON.parse(raw);
         if (typeof state.selectedExampleName === "string") {
+          const canonicalName = state.selectedExampleName.replace(/\s+\(Python\)$/, "");
           const byName = this.examples.findIndex((example) =>
-            example.name === state.selectedExampleName
-            && (!state.selectedLanguage || (example.language || "ocr") === state.selectedLanguage)
+            !example.separator && example.name === canonicalName
           );
           if (byName >= 0) {
             this.selectedExample = this.resolveSelectableExampleIndex(byName);

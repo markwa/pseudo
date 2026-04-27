@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OCR Pseudocode Online Compiler</title>
+  <title>Pseudocode Online Compiler</title>
   <link rel="stylesheet" href="styles.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
@@ -12,19 +12,19 @@
   <div id="app" class="app-shell" v-cloak>
     <header class="topbar">
       <div>
-        <div class="eyebrow">OCR pseudocode teaching tool</div>
+        <div class="eyebrow">Pseudocode teaching tool</div>
       </div>
       <div class="toolbar">
         <label class="select-wrap">
-          <select v-model.number="selectedExample">
-            <option v-for="(example, idx) in examples" :key="example.name" :value="idx" :disabled="example.separator">{{ example.name }}</option>
+          <select v-model="selectedLanguage">
+            <option value="ocr">Pseudocode</option>
+            <option value="python">Python</option>
           </select>
           <i class="bi bi-chevron-down select-arrow" aria-hidden="true"></i>
         </label>
         <label class="select-wrap">
-          <select v-model="selectedLanguage">
-            <option value="ocr">OCR Pseudocode</option>
-            <option value="python">Python</option>
+          <select v-model.number="selectedExample">
+            <option v-for="(example, idx) in examples" :key="example.name" :value="idx" :disabled="example.separator">{{ example.name }}</option>
           </select>
           <i class="bi bi-chevron-down select-arrow" aria-hidden="true"></i>
         </label>
@@ -67,8 +67,8 @@
         <template v-if="!showJs">
           <div class="editor-shell">
             <div class="line-gutter" ref="gutterScroll" aria-hidden="true">
-              <div v-for="n in editorLineCount" :key="n" :class="{ active: n === currentPseudoLine }">
-                <span class="line-marker" aria-hidden="true">{{ n === currentPseudoLine ? '▶' : '' }}</span>
+              <div v-for="n in editorLineCount" :key="n" :class="{ active: n === currentPseudoLine && debugPaused }">
+                <span class="line-marker" aria-hidden="true">{{ n === currentPseudoLine && debugPaused ? '▶' : '' }}</span>
                 <span>{{ n }}</span>
               </div>
             </div>
@@ -81,7 +81,7 @@
               autocomplete="off"
               autocorrect="off"
               class="editor"
-              :placeholder="selectedLanguage === 'python' ? 'Type Python here...' : 'Type OCR pseudocode here...'"
+              :placeholder="selectedLanguage === 'python' ? 'Type Python here...' : 'Type pseudocode here...'"
             ></textarea>
           </div>
         </template>
@@ -175,7 +175,7 @@
             <p class="trace-summary">{{ traceSummaryText }}</p>
           </div>
         </div>
-        <div class="trace-table-wrap">
+        <div class="trace-table-wrap" ref="traceTableWrap">
           <table class="trace-table">
             <thead>
               <tr class="trace-head-main">
