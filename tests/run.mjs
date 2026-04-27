@@ -1613,7 +1613,8 @@ const cases = [
 
       assert.equal(app.running, false);
       assert.equal(app.programFinished, false);
-      assert.equal(app.examples[app.selectedExample].name, "Files (Python)");
+      assert.equal(app.examples[app.selectedExample].name, "Files");
+      assert.equal(app.selectedLanguage, "python");
       assert.match(app.editorText, /openWrite\("sample\.txt"\)/);
     } finally {
       globalThis.localStorage = originalLocalStorage;
@@ -1621,19 +1622,34 @@ const cases = [
   }],
 
   ["python examples cover every OCR lesson example by key", async () => {
-    const options = await loadAppOptions();
-    const app = buildAppInstance(options);
-    const ocrKeys = app.examples
-      .filter((example) => !example.separator && example.language === "ocr")
-      .map((example) => example.exampleKey);
-    const pythonKeys = new Set(
-      app.examples
-        .filter((example) => !example.separator && example.language === "python")
-        .map((example) => example.exampleKey)
-    );
-
-    for (const key of ocrKeys) {
-      assert.equal(pythonKeys.has(key), true, `Missing Python example for ${key}`);
+    const originalLocalStorage = globalThis.localStorage;
+    const originalFetch = globalThis.fetch;
+    globalThis.localStorage = { getItem() { return null; }, setItem() {} };
+    globalThis.fetch = async (url) => {
+      const resolved = String(url).startsWith("http") || String(url).startsWith("file:")
+        ? new URL(String(url))
+        : new URL(`../${url}`, import.meta.url);
+      const text = readFileSync(resolved, "utf8");
+      return { ok: true, text: async () => text };
+    };
+    try {
+      const options = await loadAppOptions();
+      const app = buildAppInstance(options);
+      const ocrExamples = app.examples.filter((e) => !e.separator);
+      assert.equal(ocrExamples.length, 25, "Expected 25 OCR examples");
+      for (const example of ocrExamples) {
+        app.selectedExample = app.examples.indexOf(example);
+        app.selectedLanguage = "python";
+        await app.loadExample();
+        assert.ok(app.editorText.length > 0, `No Python code for ${example.name}`);
+        assert.ok(
+          app.editorText.includes("print(") || app.editorText.includes("def ") || app.editorText.includes("class "),
+          `Python code for ${example.name} does not look like Python`
+        );
+      }
+    } finally {
+      globalThis.localStorage = originalLocalStorage;
+      globalThis.fetch = originalFetch;
     }
   }],
 
@@ -2232,26 +2248,28 @@ const cases = [
     try {
       const options = await loadAppOptions();
       const app = buildAppInstance(options);
-      const sortNames = [
-        ["Bubble Sort", "ocr"],
-        ["Insertion Sort", "ocr"],
-        ["Merge Sort", "ocr"],
-        ["Quick Sort", "ocr"],
-        ["Bubble Sort (Python)", "python"],
-        ["Insertion Sort (Python)", "python"],
-        ["Merge Sort (Python)", "python"],
-        ["Quick Sort (Python)", "python"]
+      const sortCases = [
+        { name: "Bubble Sort", language: "ocr" },
+        { name: "Insertion Sort", language: "ocr" },
+        { name: "Merge Sort", language: "ocr" },
+        { name: "Quick Sort", language: "ocr" },
+        { name: "Bubble Sort", language: "python" },
+        { name: "Insertion Sort", language: "python" },
+        { name: "Merge Sort", language: "python" },
+        { name: "Quick Sort", language: "python" }
       ];
 
-      for (const [name, language] of sortNames) {
-        const example = app.examples.find((entry) => entry.name === name);
-        assert.ok(example);
-        assert.ok(Array.isArray(example.files) && example.files.length === 1);
+      for (const { name, language } of sortCases) {
+        const index = app.examples.findIndex((entry) => !entry.separator && entry.name === name);
+        assert.ok(index >= 0, `Example not found: ${name}`);
+        app.selectedExample = index;
+        app.selectedLanguage = language;
+        await app.loadExample();
 
-        const folder = name.toLowerCase().replace(/\s+\(python\)$/i, "").replace(/\s+/g, "-");
+        const folder = name.toLowerCase().replace(/\s+/g, "-");
         const inputLines = loadSortInputLines(folder).map((line) => String(line));
         const expected = [...inputLines].map((line) => Number(line)).sort((left, right) => left - right).map(String);
-        const { output, files } = await runSource(example.code, {
+        const { output, files } = await runSource(app.editorText, {
           files: new Map([["unsorted.txt", inputLines]])
         }, language === "python" ? { language: "python" } : {});
 
@@ -2284,18 +2302,25 @@ const cases = [
     try {
       const options = await loadAppOptions();
       const app = buildAppInstance(options);
-      const searchNames = ["Linear Search", "Binary Search"];
+      const searchCases = [
+        { name: "Linear Search", language: "ocr" },
+        { name: "Binary Search", language: "ocr" },
+        { name: "Linear Search", language: "python" },
+        { name: "Binary Search", language: "python" }
+      ];
       const inputLines = loadSearchInputLines().map((line) => String(line));
 
-      for (const name of searchNames) {
-        const example = app.examples.find((entry) => entry.name === name);
-        assert.ok(example);
-        assert.ok(Array.isArray(example.files) && example.files.length === 1);
+      for (const { name, language } of searchCases) {
+        const index = app.examples.findIndex((entry) => !entry.separator && entry.name === name);
+        assert.ok(index >= 0, `Example not found: ${name}`);
+        app.selectedExample = index;
+        app.selectedLanguage = language;
+        await app.loadExample();
 
-        const { output, files } = await runSource(example.code, {
+        const { output, files } = await runSource(app.editorText, {
           inputs: ["carrot"],
           files: new Map([["search.txt", inputLines]])
-        });
+        }, language === "python" ? { language: "python" } : {});
 
         assert.deepEqual(output, ["Found at 5"]);
         assert.equal(files.has("sorted.txt"), false);
@@ -2458,6 +2483,321 @@ const cases = [
     assert.match(js, /constructor\(who\)/);
     assert.doesNotMatch(js, /constructor\(\.\.\.args\)/);
     assert.deepEqual(output, ["Hi Mia"]);
+  }],
+
+  // --- python instructional examples ---
+  ["python input example greets the entered name", async () => {
+    const source = [
+      '# Ask the user for a name and print a greeting.',
+      'name = input("Name? ")',
+      'print("Hello " + name)'
+    ].join("\n");
+    const { output } = await runSource(source, { inputs: ["Mark"] }, { language: "python" });
+
+    assert.deepEqual(output, ["Hello Mark"]);
+  }],
+
+  ["python strings example manipulates text with len and slicing", async () => {
+    const source = [
+      '# Manipulate text with concatenation, len(), and slicing.',
+      'text = "HELLO WORLD"',
+      'print(text + "!")',
+      'print(str(len(text)))',
+      'print(text[6:11])'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["HELLO WORLD!", "11", "WORLD"]);
+  }],
+
+  ["python selection example chooses the middle branch", async () => {
+    const source = [
+      '# Use if / elif / else to choose one branch.',
+      'score = 72',
+      'if score >= 80:',
+      '    print("Excellent")',
+      'elif score >= 50:',
+      '    print("Pass")',
+      'else:',
+      '    print("Try again")'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["Pass"]);
+  }],
+
+  ["python boolean logic example combines and, or, and not", async () => {
+    const source = [
+      '# Combine and, or, and not inside one decision.',
+      'age = 16',
+      'has_permission = True',
+      'door_open = False',
+      'if (age >= 16 and has_permission) or not door_open:',
+      '    print("Allowed")',
+      'else:',
+      '    print("Blocked")'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["Allowed"]);
+  }],
+
+  ["python procedures example uses side effects and early return", async () => {
+    const source = [
+      '# Use a function for side effects and early return.',
+      'def announce(message):',
+      '    if message == "":',
+      '        return',
+      '    print(">> " + message)',
+      '',
+      'announce("Hello")',
+      'announce("")'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, [">> Hello"]);
+  }],
+
+  ["python counted loop example prints three iterations", async () => {
+    const source = [
+      '# Count from 1 to 3 with range().',
+      'for i in range(1, 4):',
+      '    print("Count " + str(i))'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["Count 1", "Count 2", "Count 3"]);
+  }],
+
+  ["python while loop example counts down to done", async () => {
+    const source = [
+      '# Repeat while the condition stays true.',
+      'n = 3',
+      'while n > 0:',
+      '    print(str(n))',
+      '    n = n - 1',
+      'print("Done")'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["3", "2", "1", "Done"]);
+  }],
+
+  ["python do until example repeats until the condition becomes true", async () => {
+    const source = [
+      '# Keep going until the condition becomes true.',
+      'attempts = 0',
+      'while attempts != 3:',
+      '    attempts = attempts + 1',
+      '    print("Try " + str(attempts))',
+      'print("Stopped")'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["Try 1", "Try 2", "Try 3", "Stopped"]);
+  }],
+
+  ["python recursion example counts down by calling itself", async () => {
+    const source = [
+      '# A function can call itself to count down.',
+      'def countdown(n):',
+      '    if n == 0:',
+      '        return',
+      '    print(str(n))',
+      '    countdown(n - 1)',
+      '',
+      'countdown(3)'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["3", "2", "1"]);
+  }],
+
+  ["python 2D arrays example stores values by row and column", async () => {
+    const source = [
+      '# Use nested lists with row and column indexes.',
+      'board = [["rook", "knight"], ["bishop", "queen"]]',
+      'print(board[1][1])'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["queen"]);
+  }],
+
+  ["python casting example converts values before arithmetic", async () => {
+    const source = [
+      '# Convert strings into numbers with int() and float().',
+      'whole = int("7")',
+      'decimal = float("3.5")',
+      'print(str(whole + 1))',
+      'print(str(decimal + 0.5))'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["8", "4"]);
+  }],
+
+  ["python switch example chooses the matching case", async () => {
+    const source = [
+      '# Use if / elif / else to choose from several fixed values.',
+      'day = 3',
+      'if day == 1:',
+      '    print("Mon")',
+      'elif day == 2:',
+      '    print("Tue")',
+      'elif day == 3:',
+      '    print("Wed")',
+      'else:',
+      '    print("Other")'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["Wed"]);
+  }],
+
+  ["python inheritance example constructs a derived object", async () => {
+    const source = [
+      '# A class can inherit methods from a parent class.',
+      'class Pet:',
+      '    def __init__(self, given_name):',
+      '        self.name = given_name',
+      '',
+      '    def get_name(self):',
+      '        return self.name',
+      '',
+      'class Dog(Pet):',
+      '    def __init__(self, given_name, given_breed):',
+      '        super().__init__(given_name)',
+      '        self.breed = given_breed',
+      '',
+      '    def describe(self):',
+      '        return self.get_name() + " - " + self.breed',
+      '',
+      'my_dog = Dog("Fido", "Terrier")',
+      'print(my_dog.describe())'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["Fido - Terrier"]);
+  }],
+
+  ["python global scope example updates a shared variable", async () => {
+    const source = [
+      '# Use global to update a variable outside the function.',
+      'total = 0',
+      '',
+      'def add_to_total(amount):',
+      '    global total',
+      '    total = amount',
+      '',
+      'add_to_total(7)',
+      'print(str(total))'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["7"]);
+  }],
+
+  ["python file loop example reads until endOfFile is true", async () => {
+    const source = [
+      '# Read a file until endOfFile() is true.',
+      'my_file = openRead("sample.txt")',
+      'while not my_file.endOfFile():',
+      '    print(my_file.readLine())',
+      'my_file.close()'
+    ].join("\n");
+    const { output } = await runSource(source, {
+      files: new Map([["sample.txt", ["alpha", "beta"]]])
+    }, { language: "python" });
+
+    assert.deepEqual(output, ["alpha", "beta"]);
+  }],
+
+  ["python files example writes and reads a line", async () => {
+    const source = [
+      '# Write a file, then read it back.',
+      'my_file = openWrite("sample.txt")',
+      'my_file.writeLine("Hello World")',
+      'my_file.close()',
+      '',
+      'my_file = openRead("sample.txt")',
+      'print(my_file.readLine())',
+      'my_file.close()'
+    ].join("\n");
+    const { output, files } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["Hello World"]);
+    assert.deepEqual(files.get("sample.txt"), ["Hello World"]);
+  }],
+
+  ["python functions example returns a computed value", async () => {
+    const source = [
+      '# Define a function and call it.',
+      'def double(n):',
+      '    return n * 2',
+      '',
+      'print(str(double(4)))'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["8"]);
+  }],
+
+  ["python classes example constructs and uses an object", async () => {
+    const source = [
+      '# Create a class with a constructor and a method.',
+      'class Greeter:',
+      '    def __init__(self, who):',
+      '        self.name = who',
+      '',
+      '    def greet(self):',
+      '        return "Hi " + self.name',
+      '',
+      'g = Greeter("Mia")',
+      'print(g.greet())'
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["Hi Mia"]);
+  }],
+
+  ["python Battleship example mixes loops, nested lists, input, and win/lose flow", async () => {
+    const source = [
+      '# Find the hidden ship on a 3x3 grid.',
+      'board = [[".", ".", "."], [".", ".", "."], [".", ".", "."]]',
+      'ship_row = 1',
+      'ship_col = 2',
+      'turn = 0',
+      'hit = False',
+      '',
+      'while turn < 3 and not hit:',
+      '    row_guess = int(input("Row? "))',
+      '    col_guess = int(input("Col? "))',
+      '    if row_guess < 0 or row_guess > 2 or col_guess < 0 or col_guess > 2:',
+      '        print("Out of bounds")',
+      '    elif row_guess == ship_row and col_guess == ship_col:',
+      '        board[row_guess][col_guess] = "X"',
+      '        print("Hit!")',
+      '        hit = True',
+      '    else:',
+      '        board[row_guess][col_guess] = "o"',
+      '        print("Miss")',
+      '    turn = turn + 1',
+      '',
+      'if hit:',
+      '    print("You found the ship.")',
+      'else:',
+      '    print("Game over.")',
+      '',
+      'for row in range(0, 3):',
+      '    line = ""',
+      '    for col in range(0, 3):',
+      '        line = line + board[row][col]',
+      '    print(line)'
+    ].join("\n");
+    const { output } = await runSource(source, { inputs: ["3", "0", "1", "2"] }, { language: "python" });
+
+    assert.deepEqual(output, ["Out of bounds", "Hit!", "You found the ship.", "...", "..X", "..."]);
   }],
 
   // --- practice exercises ---
@@ -2944,8 +3284,6 @@ const cases = [
       });
       assert.ok(initial.examples.some((example) => example.name === "Algorithms" && example.separator));
       assert.ok(initial.examples.some((example) => example.name === "Files"));
-      assert.ok(initial.examples.some((example) => example.name === "Python" && example.separator));
-      assert.ok(initial.examples.some((example) => example.name === "Files (Python)" && example.language === "python"));
       initial.persistState();
 
       const saved = JSON.parse(store.get("ocr-pseudocode-teaching-tool:v1"));
@@ -2984,7 +3322,7 @@ const cases = [
       assert.equal(restored.virtualFiles.length, 1);
       assert.equal(restored.virtualFiles[0].path, "notes.txt");
       assert.equal(restored.selectedVirtualFilePath, "notes.txt");
-      assert.equal(restored.examples[restored.selectedExample].name, "Files (Python)");
+      assert.equal(restored.examples[restored.selectedExample].name, "Files");
     } finally {
       globalThis.localStorage = originalLocalStorage;
     }
@@ -3283,6 +3621,62 @@ const cases = [
 
     assert.match(js, /super\.getName\(\)/);
     assert.deepEqual(output, ["Fido - Terrier"]);
+  }],
+
+  ["python login system checks credentials against a user table", async () => {
+    const source = [
+      'userTable = [["JArmstrong", "RougeChaireBean"],',
+      '             ["SBarrett7", "AmarilloDeskLemon"],',
+      '             ["EChisholm4", "JauneStoolCarrot"],',
+      '             ["VDunn1", "AzulFutonLime"],',
+      '             ["DElms5", "BleuCouchBroccoli"],',
+      '             ["EFirsova13", "RojoMattressOrange"],',
+      '             ["JGolland6", "VertTableSquash"],',
+      '             ["EHartley13", "VerdeMirrorApple"],',
+      '             ["DJohstone12", "RoseBedOnion"],',
+      '             ["GKirko8", "RosaNightstandPear"],',
+      '             ["LLemon8", "BlancDresserPepper"],',
+      '             ["HMacCunn6", "RosaOttomanGrapefruit"],',
+      '             ["PNevland10", "NoirWardrobeChilli"],',
+      '             ["AOldham5", "BlancoPillowStrawberry"],',
+      '             ["JPoole8", "VioletCabinetAubergine"]]',
+      'name = ""',
+      'password = ""',
+      'foundName = False',
+      'letin = False',
+      'index = 0',
+      'name = input("Enter your name: ")',
+      'password = input("Enter your password: ")',
+      'if ((len(name) == 0) or (len(password) == 0)):',
+      '    print("Invalid input")',
+      'else:',
+      '    while ((not foundName) and (index < len(userTable))):',
+      '        if (userTable[index][0] == name):',
+      '            foundName = True',
+      '            if (userTable[index][1] == password):',
+      '                letin = True',
+      '        else:',
+      '            index = index + 1',
+      'if (letin):',
+      '    print("Welcome")',
+      'elif (foundName):',
+      '    print("Incorrect password")',
+      'else:',
+      '    print("User not found")'
+    ].join("\n");
+
+    const cases = [
+      { inputs: ["JArmstrong", "RougeChaireBean"],  expected: ["Welcome"] },
+      { inputs: ["LLemon8",    "WrongPassword"],     expected: ["Incorrect password"] },
+      { inputs: ["ZUnknown",   "SomePassword"],      expected: ["User not found"] },
+      { inputs: ["",           "RougeChaireBean"],   expected: ["Invalid input", "User not found"] },
+      { inputs: ["JArmstrong", ""],                  expected: ["Invalid input", "User not found"] },
+    ];
+
+    for (const { inputs, expected } of cases) {
+      const { output } = await runSource(source, { inputs }, { language: "python" });
+      assert.deepEqual(output, expected, `inputs: ${JSON.stringify(inputs)}`);
+    }
   }],
 
   ["Input_Until_Minus_One sample translates its loop and accumulator", () => {
