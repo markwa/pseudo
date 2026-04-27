@@ -3,7 +3,7 @@ import {
   formatGeneratedJs,
   instrumentDebugTrace,
   syntaxError
-} from "./translator.js";
+} from "./pseudocode-translator.js";
 
 const METHOD_NAME_MAP = new Map([
   ["readline", "readLine"],

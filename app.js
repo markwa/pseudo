@@ -1,4 +1,4 @@
-﻿import { translateProgram as sharedTranslateProgram } from "./translator.js";
+﻿import { translateProgram as sharedTranslateProgram } from "./pseudocode-translator.js";
 
 const STORAGE_KEY = "ocr-pseudocode-teaching-tool:v1";
 

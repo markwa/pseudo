@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 
-import { translateProgram } from "../translator.js";
+import { translateProgram } from "../pseudocode-translator.js";
 
 export function loadFixture(name, language = "ocr") {
   return readFileSync(new URL(`./fixtures/${name}.${language === "python" ? "py" : "ocr"}`, import.meta.url), "utf8");
