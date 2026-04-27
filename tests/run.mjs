@@ -154,6 +154,18 @@ const cases = [
     assert.match(js, /if \(\(\(total == 6\) && \(!false\)\)\)/);
     assert.deepEqual(output, ["c", "6"]);
   }],
+  ["python multi-line list literals execute", async () => {
+    const source = [
+      "board = [",
+      "    [\"a\", \"b\"],",
+      "    [\"c\", \"d\"]",
+      "]",
+      "print(board[1][0])"
+    ].join("\n");
+    const { output } = await runSource(source, {}, { language: "python" });
+
+    assert.deepEqual(output, ["c"]);
+  }],
   ["python syntax errors report source lines", () => {
     assert.throws(
       () => translateSource("if True\n    print(\"x\")", { language: "python" }),

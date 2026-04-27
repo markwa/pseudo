@@ -25,7 +25,7 @@ class PythonTranslator {
   constructor(source) {
     this.source = String(source || "");
     this.rawLines = this.source.split(/\r?\n/);
-    this.lines = this.rawLines.map((raw, index) => parseLine(raw, index + 1));
+    this.lines = buildLogicalLines(this.rawLines).map(({ raw, number }) => parseLine(raw, number));
     this.classNames = new Set();
     this.topLevelNames = new Set();
     this.functionNames = new Set();
@@ -1062,6 +1062,79 @@ function stripPythonComment(line) {
     }
   }
   return line;
+}
+
+function buildLogicalLines(rawLines) {
+  const logicalLines = [];
+  let pending = null;
+  let bracketDepth = 0;
+  let trailingBackslash = false;
+
+  for (let index = 0; index < rawLines.length; index += 1) {
+    const raw = String(rawLines[index] || "").replace(/\t/g, "    ");
+    if (!pending) {
+      pending = { raw, number: index + 1 };
+    } else {
+      pending.raw += ` ${raw.trimStart()}`;
+    }
+
+    const analysis = analyseContinuation(raw);
+    bracketDepth += analysis.depthDelta;
+    trailingBackslash = analysis.trailingBackslash;
+
+    if (bracketDepth <= 0 && !trailingBackslash) {
+      logicalLines.push(pending);
+      pending = null;
+      bracketDepth = 0;
+    }
+  }
+
+  if (pending) {
+    logicalLines.push(pending);
+  }
+
+  return logicalLines;
+}
+
+function analyseContinuation(line) {
+  const source = stripPythonComment(line);
+  let quote = null;
+  let escaped = false;
+  let depthDelta = 0;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === "(" || char === "[" || char === "{") {
+      depthDelta += 1;
+      continue;
+    }
+    if (char === ")" || char === "]" || char === "}") {
+      depthDelta -= 1;
+    }
+  }
+
+  return {
+    depthDelta,
+    trailingBackslash: /\\\s*$/.test(source)
+  };
 }
 
 function splitAssignment(source, lineNumber) {
